@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.dmg
+*.exe
+*.AppImage
+recordings/
+.env
+.DS_Store
+thumbs.db

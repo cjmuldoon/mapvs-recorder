@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' file: data:;">
+  <title>ValueStream Recorder</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="titlebar-drag-region"></div>
+
+  <div id="app">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="header-logo">VS</div>
+        <div>
+          <div class="header-title">ValueStream Recorder</div>
+          <div class="header-subtitle">by MapVS</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="connection-indicator" id="connectionStatus">
+          <span class="connection-dot" id="connectionDot"></span>
+          <span id="connectionLabel">Disconnected</span>
+        </div>
+        <button class="icon-btn" id="settingsBtn" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="record">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:inline;vertical-align:-2px;margin-right:4px">
+          <circle cx="12" cy="12" r="10"/>
+        </svg>
+        Record
+      </button>
+      <button class="tab-btn" data-tab="review">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-2px;margin-right:4px">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
+        </svg>
+        Review
+      </button>
+      <button class="tab-btn" data-tab="sync">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-2px;margin-right:4px">
+          <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+        </svg>
+        Sync
+      </button>
+      <button class="tab-btn" data-tab="settings">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-2px;margin-right:4px">
+          <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+        </svg>
+        Settings
+      </button>
+    </nav>
+
+    <!-- Tab Content -->
+    <div class="tab-content">
+
+      <!-- ==================== RECORD TAB ==================== -->
+      <div class="tab-panel active" id="tab-record">
+        <!-- Mode Toggle -->
+        <div class="mode-toggle">
+          <button class="mode-toggle-btn active" data-mode="screen">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            Screen Recording
+          </button>
+          <button class="mode-toggle-btn" data-mode="manual">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            Manual Steps
+          </button>
+        </div>
+
+        <!-- Idle State (Screen Recording) -->
+        <div id="screen-idle" class="card">
+          <div class="card-title">Screen Recording</div>
+          <div class="card-desc">Automatically capture screenshots at a set interval. The recorder will detect window changes as step boundaries.</div>
+
+          <div class="form-group">
+            <label class="form-label">Capture Interval</label>
+            <div class="interval-selector" id="intervalSelector">
+              <button class="interval-option" data-interval="1000">1s</button>
+              <button class="interval-option" data-interval="2000">2s</button>
+              <button class="interval-option active" data-interval="5000">5s</button>
+              <button class="interval-option" data-interval="10000">10s</button>
+              <button class="interval-option" data-interval="30000">30s</button>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-lg btn-full" id="startScreenRecording">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+            Start Recording
+          </button>
+        </div>
+
+        <!-- Idle State (Manual Steps) -->
+        <div id="manual-idle" class="card hidden">
+          <div class="card-title">Manual Step-through</div>
+          <div class="card-desc">Capture each step manually. Press the capture button or use the keyboard shortcut when you want to record a step in your process.</div>
+
+          <button class="btn btn-primary btn-lg btn-full" id="startManualRecording">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+            Start Session
+          </button>
+        </div>
+
+        <!-- Recording Active State -->
+        <div id="recording-active" class="card hidden">
+          <div class="flex items-center justify-between" style="margin-bottom:16px">
+            <div class="flex items-center gap-3">
+              <span class="recording-pulse"></span>
+              <span style="font-weight:600;color:var(--vs-red)">Recording</span>
+              <span class="text-sm text-muted" id="recordingModeLabel">Screen Recording</span>
+            </div>
+            <button class="btn btn-danger" id="stopRecording">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="1"/>
+              </svg>
+              Stop
+            </button>
+          </div>
+
+          <div class="text-center">
+            <div class="recording-timer" id="recordingTimer">00:00:00</div>
+          </div>
+
+          <div class="recording-stats">
+            <div class="recording-stat" style="flex:1">
+              <div class="recording-stat-value" id="stepCount">0</div>
+              <div class="recording-stat-label">Steps Captured</div>
+            </div>
+            <div class="recording-stat" style="flex:1">
+              <div class="recording-stat-value" id="windowCount">0</div>
+              <div class="recording-stat-label">Windows Detected</div>
+            </div>
+          </div>
+
+          <!-- Manual step capture (shown in manual mode) -->
+          <div id="manualCaptureArea" class="hidden">
+            <div class="divider"></div>
+            <div class="notes-input-area">
+              <input type="text" class="form-input" id="stepNotesInput" placeholder="Add notes for this step (optional)..." />
+              <button class="btn btn-primary" id="captureStepBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                </svg>
+                Capture Step
+              </button>
+            </div>
+            <div class="text-sm text-muted mt-4">
+              Tip: Press <span class="kbd">Cmd+Shift+N</span> to capture a step from any app
+            </div>
+          </div>
+
+          <!-- Latest screenshot preview -->
+          <div id="latestScreenshot" class="hidden" style="margin-top:16px">
+            <div class="text-sm text-muted" style="margin-bottom:8px">Latest capture:</div>
+            <img id="latestScreenshotImg" class="screenshot-preview" alt="Latest screenshot" />
+          </div>
+
+          <!-- Recent steps during recording -->
+          <div id="recentSteps" class="hidden" style="margin-top:16px">
+            <div class="text-sm text-muted" style="margin-bottom:8px">Recent steps:</div>
+            <div class="step-list" id="recentStepList"></div>
+          </div>
+        </div>
+
+        <!-- Keyboard shortcuts hint -->
+        <div class="text-center text-sm text-muted mt-4" id="shortcutHints">
+          <span class="kbd">Cmd+Shift+N</span> New Step &nbsp;&nbsp;
+          <span class="kbd">Cmd+Shift+S</span> Stop Recording
+        </div>
+      </div>
+
+      <!-- ==================== REVIEW TAB ==================== -->
+      <div class="tab-panel" id="tab-review">
+        <!-- Empty state -->
+        <div id="reviewEmpty" class="empty-state">
+          <div class="empty-state-icon">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
+            </svg>
+          </div>
+          <div class="empty-state-title">No Recording to Review</div>
+          <div class="empty-state-desc">Complete a recording session first, then come here to review and edit your captured process steps.</div>
+        </div>
+
+        <!-- Review content -->
+        <div id="reviewContent" class="hidden">
+          <div class="card">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="card-title">Review Recording</div>
+                <div class="card-desc" id="reviewSummary">0 steps captured</div>
+              </div>
+              <div class="flex gap-2">
+                <button class="btn btn-secondary btn-sm" id="reviewClearBtn">Clear</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-list" id="reviewStepList">
+            <!-- Steps rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== SYNC TAB ==================== -->
+      <div class="tab-panel" id="tab-sync">
+        <!-- Connection status -->
+        <div id="syncDisconnected">
+          <div class="card">
+            <div class="card-title">Connect to MapVS.com</div>
+            <div class="card-desc">Sign in to your MapVS account to upload recordings and create value stream maps.</div>
+
+            <div class="sync-status disconnected">
+              <span class="connection-dot disconnected" style="width:10px;height:10px;flex-shrink:0"></span>
+              <span style="font-size:13px;color:#991b1b">Not connected to MapVS.com</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">API Token</label>
+              <div class="flex gap-2">
+                <input type="password" class="form-input" id="tokenInput" placeholder="vs_xxxxxxxxxxxx" />
+                <button class="btn btn-primary" id="connectTokenBtn">Connect</button>
+              </div>
+              <div class="text-sm text-muted mt-4">
+                Paste your API token from MapVS.com, or use OAuth to connect:
+              </div>
+            </div>
+
+            <button class="btn btn-secondary btn-full" id="oauthLoginBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+              Sign in with MapVS.com
+            </button>
+          </div>
+        </div>
+
+        <div id="syncConnected" class="hidden">
+          <div class="card">
+            <div class="sync-status connected">
+              <span class="connection-dot connected" style="width:10px;height:10px;flex-shrink:0"></span>
+              <span style="font-size:13px;color:#166534;font-weight:500">Connected to MapVS.com</span>
+            </div>
+
+            <button class="btn btn-ghost btn-sm" id="disconnectBtn" style="margin-top:8px">Disconnect</button>
+          </div>
+
+          <!-- Upload section -->
+          <div class="card" id="uploadSection">
+            <div class="card-title">Upload Recording</div>
+            <div class="card-desc" id="uploadRecordingInfo">No recording available to upload.</div>
+
+            <div class="form-group" id="mapSelectorGroup">
+              <label class="form-label">Destination Map</label>
+              <select class="form-select" id="mapSelector">
+                <option value="">Loading maps...</option>
+              </select>
+            </div>
+
+            <div class="form-group" id="newMapNameGroup" style="display:none">
+              <label class="form-label">New Map Name</label>
+              <input type="text" class="form-input" id="newMapNameInput" placeholder="e.g., Invoice Processing Workflow" />
+            </div>
+
+            <button class="btn btn-primary btn-full" id="uploadBtn" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+              </svg>
+              Upload Recording
+            </button>
+
+            <!-- Progress -->
+            <div id="uploadProgress" class="hidden" style="margin-top:16px">
+              <div class="flex items-center justify-between text-sm">
+                <span id="uploadProgressLabel">Uploading...</span>
+                <span id="uploadProgressPct">0%</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-bar-fill" id="uploadProgressBar" style="width:0%"></div>
+              </div>
+            </div>
+
+            <!-- Success -->
+            <div id="uploadSuccess" class="hidden">
+              <div class="success-banner">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                <div>
+                  <div style="font-weight:500;color:#166534">Upload Complete</div>
+                  <div class="text-sm"><a href="#" id="viewMapLink" target="_blank">View map on MapVS.com</a></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== SETTINGS TAB ==================== -->
+      <div class="tab-panel" id="tab-settings">
+        <div class="card">
+          <div class="card-title">Settings</div>
+
+          <!-- API Configuration -->
+          <div class="settings-section">
+            <div class="form-group">
+              <label class="form-label">MapVS API URL</label>
+              <input type="text" class="form-input" id="settingsApiUrl" placeholder="https://mapvs.com/api/v1" />
+            </div>
+          </div>
+
+          <!-- Capture Settings -->
+          <div class="settings-section">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Capture</h3>
+
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <div class="settings-row-label">Default Screenshot Interval</div>
+                <div class="settings-row-desc">Time between automatic captures in screen recording mode</div>
+              </div>
+              <select class="form-select" id="settingsInterval" style="width:auto">
+                <option value="1000">1 second</option>
+                <option value="2000">2 seconds</option>
+                <option value="5000" selected>5 seconds</option>
+                <option value="10000">10 seconds</option>
+                <option value="30000">30 seconds</option>
+              </select>
+            </div>
+
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <div class="settings-row-label">Screenshot Quality</div>
+                <div class="settings-row-desc">Higher quality produces larger files</div>
+              </div>
+              <select class="form-select" id="settingsQuality" style="width:auto">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <div class="settings-row-label">Auto-capture on Window Change</div>
+                <div class="settings-row-desc">Automatically capture a step when you switch to a different application</div>
+              </div>
+              <button class="form-toggle active" id="settingsAutoCapture"></button>
+            </div>
+          </div>
+
+          <!-- Keyboard Shortcuts -->
+          <div class="settings-section">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Keyboard Shortcuts</h3>
+
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <div class="settings-row-label">Capture New Step</div>
+              </div>
+              <span class="kbd">Cmd+Shift+N</span>
+            </div>
+
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <div class="settings-row-label">Stop Recording</div>
+              </div>
+              <span class="kbd">Cmd+Shift+S</span>
+            </div>
+          </div>
+
+          <!-- Storage -->
+          <div class="settings-section">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Storage</h3>
+
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <div class="settings-row-label">Recording Storage Location</div>
+                <div class="settings-row-desc" id="storagePath">~/Library/Application Support/mapvs-recorder/recordings</div>
+              </div>
+            </div>
+
+            <button class="btn btn-danger btn-sm" id="clearDataBtn" style="margin-top:8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+              Clear All Local Data
+            </button>
+          </div>
+
+          <!-- Save -->
+          <div style="margin-top:20px">
+            <button class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
