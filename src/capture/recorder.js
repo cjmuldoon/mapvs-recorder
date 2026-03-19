@@ -1,23 +1,37 @@
-const { captureScreen, getActiveWindow } = require('./screenshot');
+const { captureScreen, captureRegion, getActiveWindow, getActiveDisplay } = require('./screenshot');
 const { v4: uuidv4 } = require('crypto');
 const path = require('path');
 const fs = require('fs');
 
+// Import powerMonitor from electron (available in main process)
+let powerMonitor;
+try {
+  powerMonitor = require('electron').powerMonitor;
+} catch (e) {
+  powerMonitor = null;
+}
+
 class Recorder {
   /**
-   * @param {{ mode: 'screen' | 'manual', interval: number, storagePath: string }} options
+   * @param {{ mode: 'screen' | 'manual', interval: number, storagePath: string, captureRegionBounds?: object, idleThreshold?: number, displayId?: number, followActiveWindow?: boolean }} options
    */
-  constructor({ mode = 'manual', interval = 5000, storagePath }) {
+  constructor({ mode = 'manual', interval = 5000, storagePath, captureRegionBounds = null, idleThreshold = 5, displayId = null, followActiveWindow = false }) {
     this.sessionId = generateId();
     this.mode = mode;
     this.interval = interval;
     this.storagePath = path.join(storagePath, this.sessionId);
+    this.captureRegionBounds = captureRegionBounds;
+    this.idleThreshold = idleThreshold; // seconds — Feature 2
+    this.displayId = displayId; // Feature 3: specific display to capture
+    this.followActiveWindow = followActiveWindow; // Feature 3: follow active window across monitors
     this.steps = [];
     this.startTime = null;
     this.endTime = null;
     this.status = 'idle'; // idle | recording | stopped
     this._intervalTimer = null;
     this._lastWindowTitle = null;
+    this._lastActivityTime = null; // Feature 2: track last activity
+    this._stepIdleAccumulator = 0; // Feature 2: accumulated idle time for current step
   }
 
   /**
@@ -32,6 +46,8 @@ class Recorder {
     this.startTime = new Date().toISOString();
     this.status = 'recording';
     this.steps = [];
+    this._lastActivityTime = Date.now();
+    this._stepIdleAccumulator = 0;
 
     if (this.mode === 'screen') {
       await this._captureStep('Recording started');
@@ -54,7 +70,7 @@ class Recorder {
     this.endTime = new Date().toISOString();
     this.status = 'stopped';
 
-    // Calculate durations between steps
+    // Calculate durations between steps and idle/active split
     for (let i = 0; i < this.steps.length; i++) {
       if (i < this.steps.length - 1) {
         const current = new Date(this.steps[i].timestamp);
@@ -64,6 +80,25 @@ class Recorder {
         const current = new Date(this.steps[i].timestamp);
         const end = new Date(this.endTime);
         this.steps[i].duration_secs = (end - current) / 1000;
+      }
+
+      // Feature 2: finalize idle/active split and auto-classify
+      const step = this.steps[i];
+      const totalDuration = step.duration_secs || 0;
+      const idleSecs = step.idle_seconds || 0;
+      step.active_seconds = Math.max(0, totalDuration - idleSecs);
+
+      // Auto-classify VA type based on idle ratio
+      if (step.va_type === 'undetermined' && totalDuration > 0) {
+        const idleRatio = idleSecs / totalDuration;
+        if (idleRatio < 0.2) {
+          step.va_type = 'va';
+          step.auto_classified = true;
+        } else if (idleRatio > 0.5) {
+          step.va_type = 'nva';
+          step.auto_classified = true;
+        }
+        // Otherwise leave as undetermined
       }
     }
 
@@ -95,6 +130,18 @@ class Recorder {
   }
 
   /**
+   * Get current system idle time in seconds.
+   * Uses Electron's powerMonitor.getSystemIdleTime().
+   * @returns {number} Idle seconds
+   */
+  _getIdleTime() {
+    if (powerMonitor && typeof powerMonitor.getSystemIdleTime === 'function') {
+      return powerMonitor.getSystemIdleTime();
+    }
+    return 0;
+  }
+
+  /**
    * Internal: capture a single step with screenshot and window info.
    */
   async _captureStep(notes = '') {
@@ -102,8 +149,26 @@ class Recorder {
     let screenshotPath = null;
     let windowInfo = { title: 'Unknown', app: 'Unknown', bounds: null };
 
+    // Feature 2: check idle time before capture
+    const idleTimeSecs = this._getIdleTime();
+    const isIdle = idleTimeSecs >= this.idleThreshold;
+
+    // Feature 3: determine which display to capture
+    let captureDisplayId = this.displayId;
+    if (this.followActiveWindow) {
+      try {
+        captureDisplayId = await getActiveDisplay();
+      } catch (err) {
+        console.error('Failed to detect active display:', err.message);
+      }
+    }
+
     try {
-      screenshotPath = await captureScreen(this.storagePath);
+      if (this.captureRegionBounds) {
+        screenshotPath = await captureRegion(this.captureRegionBounds, this.storagePath);
+      } else {
+        screenshotPath = await captureScreen(this.storagePath, captureDisplayId);
+      }
     } catch (err) {
       console.error('Screenshot capture failed:', err.message);
     }
@@ -113,6 +178,9 @@ class Recorder {
     } catch (err) {
       console.error('Active window detection failed:', err.message);
     }
+
+    // Feature 2: accumulate idle time for step tracking
+    const stepIdleSecs = isIdle ? idleTimeSecs : 0;
 
     const step = {
       order: this.steps.length + 1,
@@ -125,7 +193,11 @@ class Recorder {
       stage_name: deriveStageNameFromWindow(windowInfo.title, windowInfo.app),
       va_type: 'undetermined', // va | nva | undetermined
       cycle_time: 0,
-      wait_time: 0
+      wait_time: isIdle ? stepIdleSecs : 0,
+      // Feature 2: idle detection fields
+      idle_seconds: stepIdleSecs,
+      active_seconds: 0, // Will be finalized in stop()
+      auto_classified: false // Will be set in stop() if auto-classified
     };
 
     this.steps.push(step);
@@ -154,7 +226,12 @@ class Recorder {
           ? `Window changed: ${windowInfo.title}`
           : '';
 
-        await this._captureStep(notes);
+        // Feature 2: check idle state and annotate
+        const idleTimeSecs = this._getIdleTime();
+        const isIdle = idleTimeSecs >= this.idleThreshold;
+        const idleNote = isIdle ? ` [Idle: ${idleTimeSecs}s]` : '';
+
+        await this._captureStep(notes + idleNote);
       } catch (err) {
         console.error('Auto-capture failed:', err.message);
       }

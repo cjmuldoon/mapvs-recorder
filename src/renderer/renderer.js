@@ -1,6 +1,6 @@
 /**
- * ValueStream Recorder — Renderer Process
- * Manages UI state, IPC communication, and user interactions.
+ * ValueStream Recorder — Renderer Process v2
+ * Theme switching, smooth transitions, toast notifications
  */
 
 // ============================================================
@@ -8,13 +8,14 @@
 // ============================================================
 const state = {
   activeTab: 'record',
-  recordingMode: 'screen',     // 'screen' | 'manual'
-  recordingStatus: 'idle',     // 'idle' | 'recording' | 'stopped'
+  recordingMode: 'screen',
+  recordingStatus: 'idle',
   recordingStartTime: null,
   steps: [],
-  recording: null,             // completed recording data
+  recording: null,
   connected: false,
   maps: [],
+  theme: 'soft',
   settings: {
     api_url: 'https://mapvs.com/api/v1',
     preferences: {
@@ -25,38 +26,95 @@ const state = {
     }
   },
   timerInterval: null,
-  uniqueWindows: new Set()
+  uniqueWindows: new Set(),
+  captureRegion: null,  // { x, y, width, height } or null for full-screen
+  comparisonRecording: null, // Feature 1: the "before" recording for comparison
+  monitorMode: 'primary', // Feature 3: 'primary' | 'specific' | 'follow'
+  selectedDisplayId: null, // Feature 3: specific display ID
+  displays: [] // Feature 3: detected displays
 };
 
 // ============================================================
 // Initialization
 // ============================================================
 document.addEventListener('DOMContentLoaded', async () => {
+  loadTheme();
+  setupThemeToggle();
   setupTabNavigation();
   setupModeToggle();
   setupIntervalSelector();
   setupRecordingControls();
+  setupRegionControls();
+  setupComparisonControls();
+  setupMonitorControls();
   setupSyncControls();
   setupSettingsControls();
   setupKeyboardShortcuts();
   await loadSettings();
+  await loadRegionState();
+  await loadDisplays();
   await checkConnection();
 });
+
+// ============================================================
+// Theme System
+// ============================================================
+function loadTheme() {
+  const saved = localStorage.getItem('mapvs_recorder_theme') || 'soft';
+  setTheme(saved, false);
+}
+
+function setTheme(theme, save = true) {
+  state.theme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
+
+  // Update toggle buttons
+  document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.theme === theme);
+  });
+
+  // Update settings dropdown if it exists
+  const settingsTheme = document.getElementById('settingsTheme');
+  if (settingsTheme) settingsTheme.value = theme;
+
+  if (save) {
+    localStorage.setItem('mapvs_recorder_theme', theme);
+  }
+}
+
+function setupThemeToggle() {
+  document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => setTheme(btn.dataset.theme));
+  });
+}
+
+// ============================================================
+// Toast Notifications
+// ============================================================
+function showToast(message, type = 'info', duration = 2500) {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add('toast-out');
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
 
 // ============================================================
 // Tab Navigation
 // ============================================================
 function setupTabNavigation() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      switchTab(btn.dataset.tab);
-    });
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 
-  // Settings gear button goes to settings tab
-  document.getElementById('settingsBtn').addEventListener('click', () => {
-    switchTab('settings');
-  });
+  document.getElementById('settingsBtn').addEventListener('click', () => switchTab('settings'));
 }
 
 function switchTab(tabId) {
@@ -67,10 +125,18 @@ function switchTab(tabId) {
   });
 
   document.querySelectorAll('.tab-panel').forEach(panel => {
-    panel.classList.toggle('active', panel.id === `tab-${tabId}`);
+    const isActive = panel.id === `tab-${tabId}`;
+    if (isActive && !panel.classList.contains('active')) {
+      panel.classList.add('active');
+      // Re-trigger animation
+      panel.style.animation = 'none';
+      panel.offsetHeight; // trigger reflow
+      panel.style.animation = '';
+    } else if (!isActive) {
+      panel.classList.remove('active');
+    }
   });
 
-  // Refresh data when switching tabs
   if (tabId === 'review') refreshReviewTab();
   if (tabId === 'sync') refreshSyncTab();
 }
@@ -81,7 +147,7 @@ function switchTab(tabId) {
 function setupModeToggle() {
   document.querySelectorAll('.mode-toggle-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      if (state.recordingStatus === 'recording') return; // can't switch during recording
+      if (state.recordingStatus === 'recording') return;
       setRecordingMode(btn.dataset.mode);
     });
   });
@@ -120,7 +186,6 @@ function setupRecordingControls() {
   document.getElementById('stopRecording').addEventListener('click', stopRecording);
   document.getElementById('captureStepBtn').addEventListener('click', captureManualStep);
 
-  // Enter key in notes input triggers capture
   document.getElementById('stepNotesInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') captureManualStep();
   });
@@ -128,7 +193,6 @@ function setupRecordingControls() {
 
 async function startRecording(mode) {
   try {
-    // Save interval setting before starting
     await window.api.settings.set({
       preferences: { screenshot_interval: state.settings.preferences.screenshot_interval }
     });
@@ -142,8 +206,14 @@ async function startRecording(mode) {
       state.uniqueWindows.clear();
       updateRecordingUI();
       startTimer();
+      showToast('Recording started', 'info');
+
+      if (mode === 'screen') {
+        startStepPolling();
+      }
     }
   } catch (err) {
+    showToast('Failed to start recording', 'error');
     console.error('Failed to start recording:', err);
   }
 }
@@ -156,11 +226,13 @@ async function stopRecording() {
       state.recording = result.data;
       state.steps = result.data.steps || [];
       stopTimer();
+      stopStepPolling();
       updateRecordingUI();
-      // Switch to review tab
+      showToast(`Captured ${state.steps.length} steps`, 'success');
       switchTab('review');
     }
   } catch (err) {
+    showToast('Failed to stop recording', 'error');
     console.error('Failed to stop recording:', err);
   }
 }
@@ -180,8 +252,18 @@ async function captureManualStep() {
       updateStepCounts();
       updateLatestScreenshot(result.data);
       updateRecentSteps();
+
+      // Flash the capture button
+      const btn = document.getElementById('captureStepBtn');
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-success');
+      setTimeout(() => {
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-primary');
+      }, 400);
     }
   } catch (err) {
+    showToast('Failed to capture step', 'error');
     console.error('Failed to capture step:', err);
   }
 }
@@ -190,7 +272,6 @@ function updateRecordingUI() {
   const isRecording = state.recordingStatus === 'recording';
   const isIdle = state.recordingStatus === 'idle' || state.recordingStatus === 'stopped';
 
-  // Show/hide panels
   document.getElementById('screen-idle').classList.toggle('hidden', !isIdle || state.recordingMode !== 'screen');
   document.getElementById('manual-idle').classList.toggle('hidden', !isIdle || state.recordingMode !== 'manual');
   document.getElementById('recording-active').classList.toggle('hidden', !isRecording);
@@ -210,8 +291,23 @@ function updateRecordingUI() {
 }
 
 function updateStepCounts() {
-  document.getElementById('stepCount').textContent = state.steps.length;
-  document.getElementById('windowCount').textContent = state.uniqueWindows.size;
+  const stepEl = document.getElementById('stepCount');
+  const windowEl = document.getElementById('windowCount');
+
+  // Animate number change
+  animateValue(stepEl, state.steps.length);
+  animateValue(windowEl, state.uniqueWindows.size);
+}
+
+function animateValue(element, newValue) {
+  const current = parseInt(element.textContent) || 0;
+  if (current === newValue) return;
+  element.textContent = newValue;
+  element.style.transform = 'scale(1.2)';
+  element.style.transition = 'transform 0.2s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+  setTimeout(() => {
+    element.style.transform = 'scale(1)';
+  }, 200);
 }
 
 function updateLatestScreenshot(step) {
@@ -248,7 +344,7 @@ function updateRecentSteps() {
         </div>
         <div class="step-title">${escapeHtml(step.stage_name || step.window_title)}</div>
         <div class="step-app">${escapeHtml(step.app_name)}</div>
-        ${step.notes ? `<div class="text-sm text-muted" style="margin-top:2px">${escapeHtml(step.notes)}</div>` : ''}
+        ${step.notes ? `<div class="text-xs text-muted mt-2">${escapeHtml(step.notes)}</div>` : ''}
       </div>
     </div>
   `).join('');
@@ -290,8 +386,9 @@ function refreshReviewTab() {
   if (!hasRecording) return;
 
   document.getElementById('reviewSummary').textContent =
-    `${state.steps.length} steps captured — ${formatDuration(state.recording.startTime, state.recording.endTime)} total`;
+    `${state.steps.length} steps captured \u2014 ${formatDuration(state.recording.startTime, state.recording.endTime)} total`;
 
+  renderTimeline();
   renderReviewSteps();
 }
 
@@ -307,12 +404,12 @@ function renderReviewSteps() {
       <div class="step-info">
         <div class="step-header">
           <span class="step-number">Step ${index + 1}</span>
-          <span class="step-time">${step.duration_secs ? step.duration_secs.toFixed(1) + 's' : '--'}</span>
+          <span class="step-time font-mono">${step.duration_secs ? step.duration_secs.toFixed(1) + 's' : '--'}</span>
         </div>
         <input class="step-name-input" value="${escapeAttr(step.stage_name || '')}"
           data-index="${index}" data-field="stage_name"
           placeholder="Stage name..." />
-        <div class="step-app">${escapeHtml(step.app_name)} — ${escapeHtml(step.window_title)}</div>
+        <div class="step-app">${escapeHtml(step.app_name)} \u2014 ${escapeHtml(step.window_title)}</div>
         <input class="editable-field" value="${escapeAttr(step.notes || '')}"
           data-index="${index}" data-field="notes"
           placeholder="Add notes..." style="margin-top:4px" />
@@ -328,14 +425,24 @@ function renderReviewSteps() {
               data-index="${index}" data-field="wait_time" />
           </div>
         </div>
+        ${(step.idle_seconds > 0 || step.active_seconds > 0) ? `
+        <div class="idle-breakdown">
+          <span class="idle-label">Active:</span>
+          <span class="idle-value">${(step.active_seconds || 0).toFixed(1)}s</span>
+          <span class="idle-label">Idle:</span>
+          <span class="idle-value">${(step.idle_seconds || 0).toFixed(1)}s</span>
+        </div>` : ''}
       </div>
       <div class="step-actions">
-        <button class="va-badge ${step.va_type || 'undetermined'}" data-index="${index}" data-action="toggle-va"
-          title="Click to toggle VA/NVA">
-          ${step.va_type === 'va' ? 'VA' : step.va_type === 'nva' ? 'NVA' : '?'}
-        </button>
+        <div style="display:flex;align-items:center;gap:2px">
+          <button class="va-badge ${step.va_type || 'undetermined'}" data-index="${index}" data-action="toggle-va"
+            title="Click to toggle VA/NVA">
+            ${step.va_type === 'va' ? 'VA' : step.va_type === 'nva' ? 'NVA' : '?'}
+          </button>
+          ${step.auto_classified ? `<span class="auto-badge" title="Auto-classified based on ${step.duration_secs > 0 ? Math.round((step.idle_seconds || 0) / step.duration_secs * 100) : 0}% idle time">Auto</span>` : ''}
+        </div>
         <button class="icon-btn btn-sm" data-index="${index}" data-action="delete" title="Delete step"
-          style="color:var(--vs-red);width:28px;height:28px">
+          style="color:var(--vs-danger);width:28px;height:28px">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -344,7 +451,9 @@ function renderReviewSteps() {
     </div>
   `).join('');
 
-  // Event delegation for review actions
+  // Event delegation
+  list.removeEventListener('input', handleReviewInput);
+  list.removeEventListener('click', handleReviewClick);
   list.addEventListener('input', handleReviewInput);
   list.addEventListener('click', handleReviewClick);
   setupDragAndDrop(list);
@@ -361,10 +470,7 @@ function handleReviewInput(e) {
     state.steps[index][field] = e.target.value;
   }
 
-  // Keep the recording data in sync
-  if (state.recording) {
-    state.recording.steps = state.steps;
-  }
+  if (state.recording) state.recording.steps = state.steps;
 }
 
 function handleReviewClick(e) {
@@ -380,17 +486,18 @@ function handleReviewClick(e) {
     const next = cycle[(cycle.indexOf(current) + 1) % cycle.length];
     state.steps[index].va_type = next;
     if (state.recording) state.recording.steps = state.steps;
+    renderTimeline();
     renderReviewSteps();
   }
 
   if (action === 'delete') {
     state.steps.splice(index, 1);
-    // Re-number steps
     state.steps.forEach((s, i) => s.order = i + 1);
     if (state.recording) state.recording.steps = state.steps;
+    renderTimeline();
     renderReviewSteps();
-    document.getElementById('reviewSummary').textContent =
-      `${state.steps.length} steps captured`;
+    document.getElementById('reviewSummary').textContent = `${state.steps.length} steps captured`;
+    showToast('Step removed', 'info');
   }
 }
 
@@ -418,7 +525,6 @@ function setupDragAndDrop(container) {
     const dropIndex = parseInt(card.dataset.index);
     if (draggedIndex === dropIndex) return;
 
-    // Reorder
     const [moved] = state.steps.splice(draggedIndex, 1);
     state.steps.splice(dropIndex, 0, moved);
     state.steps.forEach((s, i) => s.order = i + 1);
@@ -437,6 +543,7 @@ document.getElementById('reviewClearBtn')?.addEventListener('click', () => {
     state.recording = null;
     state.steps = [];
     refreshReviewTab();
+    showToast('Recording cleared', 'info');
   }
 });
 
@@ -459,18 +566,20 @@ function setupSyncControls() {
     await window.api.auth.logout();
     state.connected = false;
     updateConnectionUI();
+    showToast('Disconnected', 'info');
   });
 
   document.getElementById('mapSelector').addEventListener('change', (e) => {
     const value = e.target.value;
-    document.getElementById('newMapNameGroup').style.display = value === '_new' ? 'block' : 'none';
+    const newMapGroup = document.getElementById('newMapNameGroup');
+    newMapGroup.classList.toggle('hidden', value !== '_new');
     updateUploadButton();
   });
 
+  document.getElementById('newMapNameInput')?.addEventListener('input', updateUploadButton);
   document.getElementById('uploadBtn').addEventListener('click', uploadRecording);
 
-  // Listen for OAuth token received from main process
-  window.api.auth.onTokenReceived(async (token) => {
+  window.api.auth.onTokenReceived(async () => {
     await checkConnection();
   });
 }
@@ -497,6 +606,7 @@ function updateConnectionUI() {
 
   if (state.connected) {
     loadMaps();
+    showToast('Connected to MapVS.com', 'success');
   }
 }
 
@@ -509,7 +619,7 @@ async function loadMaps() {
       selector.innerHTML = `
         <option value="">Select a map...</option>
         ${state.maps.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('')}
-        <option value="_new">+ Create New Map</option>
+        <option value="_new">\u002B Create New Map</option>
       `;
     }
   } catch (err) {
@@ -543,10 +653,9 @@ async function uploadRecording() {
   document.getElementById('uploadSuccess').classList.add('hidden');
   document.getElementById('uploadBtn').disabled = true;
 
-  // Simulate progress
   let progress = 0;
   const progressInterval = setInterval(() => {
-    progress = Math.min(progress + Math.random() * 15, 90);
+    progress = Math.min(progress + Math.random() * 12, 90);
     document.getElementById('uploadProgressBar').style.width = `${progress}%`;
     document.getElementById('uploadProgressPct').textContent = `${Math.round(progress)}%`;
   }, 300);
@@ -574,6 +683,7 @@ async function uploadRecording() {
       setTimeout(() => {
         document.getElementById('uploadProgress').classList.add('hidden');
         document.getElementById('uploadSuccess').classList.remove('hidden');
+        showToast('Upload complete!', 'success');
       }, 500);
     } else {
       throw new Error(result.error || 'Upload failed');
@@ -583,6 +693,7 @@ async function uploadRecording() {
     document.getElementById('uploadProgressLabel').textContent = `Error: ${err.message}`;
     document.getElementById('uploadProgressBar').style.width = '0%';
     document.getElementById('uploadBtn').disabled = false;
+    showToast(`Upload failed: ${err.message}`, 'error');
   }
 }
 
@@ -592,6 +703,10 @@ async function uploadRecording() {
 function setupSettingsControls() {
   document.getElementById('settingsAutoCapture').addEventListener('click', function() {
     this.classList.toggle('active');
+  });
+
+  document.getElementById('settingsTheme')?.addEventListener('change', function() {
+    setTheme(this.value);
   });
 
   document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
@@ -624,11 +739,15 @@ function applySettingsToUI(settings) {
       document.getElementById('storagePath').textContent = settings.preferences.storage_path;
     }
 
-    // Sync interval selector on record tab
     state.settings.preferences.screenshot_interval = settings.preferences.screenshot_interval || 5000;
     document.querySelectorAll('.interval-option').forEach(btn => {
       btn.classList.toggle('active', parseInt(btn.dataset.interval) === state.settings.preferences.screenshot_interval);
     });
+
+    // Load saved theme
+    if (settings.preferences.theme) {
+      setTheme(settings.preferences.theme, false);
+    }
   }
 }
 
@@ -638,23 +757,17 @@ async function saveSettings() {
     preferences: {
       screenshot_interval: parseInt(document.getElementById('settingsInterval').value),
       screenshot_quality: document.getElementById('settingsQuality').value,
-      auto_capture_on_window_change: document.getElementById('settingsAutoCapture').classList.contains('active')
+      auto_capture_on_window_change: document.getElementById('settingsAutoCapture').classList.contains('active'),
+      theme: state.theme
     }
   };
 
   try {
     await window.api.settings.set(settings);
     state.settings = { ...state.settings, ...settings };
-
-    // Flash button to confirm
-    const btn = document.getElementById('saveSettingsBtn');
-    btn.textContent = 'Saved';
-    btn.style.background = '#22c55e';
-    setTimeout(() => {
-      btn.textContent = 'Save Settings';
-      btn.style.background = '';
-    }, 1500);
+    showToast('Settings saved', 'success');
   } catch (err) {
+    showToast('Failed to save settings', 'error');
     console.error('Failed to save settings:', err);
   }
 }
@@ -667,24 +780,15 @@ async function clearData() {
     state.recording = null;
     state.steps = [];
     refreshReviewTab();
-
-    const btn = document.getElementById('clearDataBtn');
-    btn.textContent = 'Cleared';
-    setTimeout(() => {
-      btn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-        </svg>
-        Clear All Local Data
-      `;
-    }, 1500);
+    showToast('Local data cleared', 'info');
   } catch (err) {
+    showToast('Failed to clear data', 'error');
     console.error('Failed to clear data:', err);
   }
 }
 
 // ============================================================
-// Keyboard Shortcuts (from main process)
+// Keyboard Shortcuts
 // ============================================================
 function setupKeyboardShortcuts() {
   window.api.recording.onNewStep(async () => {
@@ -710,14 +814,15 @@ function setupKeyboardShortcuts() {
 }
 
 // ============================================================
-// Polling for screen recording step updates
+// Step Polling (screen recording mode)
 // ============================================================
 let pollInterval = null;
 
 function startStepPolling() {
+  stopStepPolling();
   pollInterval = setInterval(async () => {
     if (state.recordingStatus !== 'recording' || state.recordingMode !== 'screen') {
-      if (pollInterval) clearInterval(pollInterval);
+      stopStepPolling();
       return;
     }
     try {
@@ -738,21 +843,455 @@ function startStepPolling() {
   }, 2000);
 }
 
-// Patch startRecording to include polling
-const _origStartRecording = startRecording;
-// Override is already handled in the flow
+function stopStepPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+}
 
-// Start polling when recording starts in screen mode
-const origStart = document.getElementById('startScreenRecording');
-if (origStart) {
-  const origHandler = origStart.onclick;
-  origStart.addEventListener('click', () => {
-    setTimeout(() => {
-      if (state.recordingStatus === 'recording' && state.recordingMode === 'screen') {
-        startStepPolling();
-      }
-    }, 500);
+// ============================================================
+// Region Selection Controls
+// ============================================================
+function setupRegionControls() {
+  document.getElementById('selectRegionBtn').addEventListener('click', selectRegion);
+  document.getElementById('clearRegionBtn').addEventListener('click', clearRegion);
+}
+
+async function loadRegionState() {
+  try {
+    const result = await window.api.capture.getRegion();
+    if (result.success && result.bounds) {
+      state.captureRegion = result.bounds;
+      updateRegionUI();
+    }
+  } catch (err) {
+    console.error('Failed to load region state:', err);
+  }
+}
+
+async function selectRegion() {
+  try {
+    showToast('Draw a rectangle on screen...', 'info');
+    const result = await window.api.capture.selectRegion();
+    if (result.success && result.bounds) {
+      state.captureRegion = result.bounds;
+      updateRegionUI();
+      showToast(`Region set: ${result.bounds.width}x${result.bounds.height}`, 'success');
+    } else if (result.cancelled) {
+      showToast('Region selection cancelled', 'info');
+    }
+  } catch (err) {
+    showToast('Failed to select region', 'error');
+    console.error('Region selection failed:', err);
+  }
+}
+
+async function clearRegion() {
+  try {
+    await window.api.capture.clearRegion();
+    state.captureRegion = null;
+    updateRegionUI();
+    showToast('Capturing full screen', 'info');
+  } catch (err) {
+    showToast('Failed to clear region', 'error');
+    console.error('Clear region failed:', err);
+  }
+}
+
+function updateRegionUI() {
+  const statusEl = document.getElementById('regionStatus');
+  const statusTextEl = document.getElementById('regionStatusText');
+  const clearBtn = document.getElementById('clearRegionBtn');
+
+  if (state.captureRegion) {
+    const r = state.captureRegion;
+    statusTextEl.textContent = `Capturing: ${r.width}x${r.height} at (${r.x}, ${r.y})`;
+    statusEl.classList.add('has-region');
+    clearBtn.classList.remove('hidden');
+  } else {
+    statusTextEl.textContent = 'Full Screen';
+    statusEl.classList.remove('has-region');
+    clearBtn.classList.add('hidden');
+  }
+}
+
+// ============================================================
+// Process Timeline
+// ============================================================
+function renderTimeline() {
+  const timelineBar = document.getElementById('timelineBar');
+  const timelineCard = document.getElementById('timelineCard');
+
+  if (!state.steps || state.steps.length === 0) {
+    timelineCard.classList.add('hidden');
+    return;
+  }
+
+  timelineCard.classList.remove('hidden');
+
+  // Calculate totals
+  const totalDuration = state.steps.reduce((sum, s) => sum + (s.duration_secs || 0), 0);
+  let vaTime = 0;
+  let nvaTime = 0;
+  let undeterminedTime = 0;
+
+  state.steps.forEach(s => {
+    const dur = s.duration_secs || 0;
+    if (s.va_type === 'va') vaTime += dur;
+    else if (s.va_type === 'nva') nvaTime += dur;
+    else undeterminedTime += dur;
   });
+
+  // Update summary
+  document.getElementById('timelineTotal').textContent = formatSeconds(totalDuration);
+  document.getElementById('timelineVA').textContent = formatSeconds(vaTime);
+  document.getElementById('timelineNVA').textContent = formatSeconds(nvaTime);
+  document.getElementById('timelineWait').textContent = formatSeconds(undeterminedTime);
+
+  // Build blocks
+  if (totalDuration === 0) {
+    timelineBar.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--vs-text-muted)">No duration data</div>';
+    return;
+  }
+
+  timelineBar.innerHTML = state.steps.map((step, index) => {
+    const pct = ((step.duration_secs || 0) / totalDuration) * 100;
+    const vaClass = step.va_type || 'undetermined';
+    const label = step.stage_name || step.window_title || `Step ${index + 1}`;
+    const thumbHtml = step.screenshot_path
+      ? `<img class="timeline-tooltip-thumb" src="file://${step.screenshot_path}" alt="Step ${index + 1}" />`
+      : '';
+
+    return `
+      <div class="timeline-block ${vaClass}"
+           style="width:${Math.max(pct, 0.5)}%"
+           data-step-index="${index}"
+           title="">
+        ${pct > 8 ? `<span class="timeline-block-label">${escapeHtml(label)}</span>` : ''}
+        <div class="timeline-tooltip">
+          <div class="timeline-tooltip-title">${escapeHtml(label)}</div>
+          <div class="timeline-tooltip-row">
+            <span>Duration</span>
+            <span class="value">${(step.duration_secs || 0).toFixed(1)}s</span>
+          </div>
+          <div class="timeline-tooltip-row">
+            <span>Cycle Time</span>
+            <span class="value">${(step.cycle_time || 0).toFixed(1)}s</span>
+          </div>
+          <div class="timeline-tooltip-row">
+            <span>Wait Time</span>
+            <span class="value">${(step.wait_time || 0).toFixed(1)}s</span>
+          </div>
+          <div class="timeline-tooltip-row">
+            <span>Type</span>
+            <span class="value">${vaClass.toUpperCase()}</span>
+          </div>
+          ${thumbHtml}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Click handler — scroll to corresponding step card
+  timelineBar.querySelectorAll('.timeline-block').forEach(block => {
+    block.addEventListener('click', () => {
+      const idx = parseInt(block.dataset.stepIndex);
+      const stepCards = document.querySelectorAll('#reviewStepList .step-card');
+      if (stepCards[idx]) {
+        stepCards[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Brief highlight
+        stepCards[idx].style.boxShadow = '0 0 0 3px var(--vs-primary)';
+        setTimeout(() => {
+          stepCards[idx].style.boxShadow = '';
+        }, 1500);
+      }
+    });
+  });
+}
+
+function formatSeconds(totalSecs) {
+  if (!totalSecs || totalSecs <= 0) return '0s';
+  if (totalSecs < 60) return `${totalSecs.toFixed(1)}s`;
+  const mins = Math.floor(totalSecs / 60);
+  const secs = Math.round(totalSecs % 60);
+  if (mins < 60) return `${mins}m ${secs}s`;
+  const hrs = Math.floor(mins / 60);
+  const remainMins = mins % 60;
+  return `${hrs}h ${remainMins}m`;
+}
+
+// ============================================================
+// Feature 1: Comparison Controls
+// ============================================================
+function setupComparisonControls() {
+  document.getElementById('reviewCompareBtn')?.addEventListener('click', loadComparisonFile);
+  document.getElementById('closeComparisonBtn')?.addEventListener('click', closeComparison);
+}
+
+async function loadComparisonFile() {
+  // Use a hidden file input to pick a session.json
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json';
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = JSON.parse(evt.target.result);
+        if (!data.steps || !Array.isArray(data.steps)) {
+          showToast('Invalid session file: no steps found', 'error');
+          return;
+        }
+        state.comparisonRecording = data;
+        renderComparison();
+        showToast('Comparison loaded', 'success');
+      } catch (err) {
+        showToast('Failed to parse session file', 'error');
+        console.error('Comparison parse error:', err);
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  fileInput.click();
+}
+
+function closeComparison() {
+  state.comparisonRecording = null;
+  document.getElementById('comparisonSection').classList.add('hidden');
+}
+
+function renderComparison() {
+  if (!state.comparisonRecording || !state.recording) return;
+
+  const section = document.getElementById('comparisonSection');
+  section.classList.remove('hidden');
+
+  // compareRecordings is defined in comparison.js (loaded before renderer.js)
+  const result = compareRecordings(state.comparisonRecording, state.recording);
+
+  // Delta cards
+  renderDeltaCard('deltaLeadTime', 'deltaLeadTimeValue', 'deltaLeadTimePct',
+    formatSeconds(Math.abs(result.deltas.duration)),
+    `${result.deltas.durationPct >= 0 ? '+' : ''}${result.deltas.durationPct.toFixed(1)}%`,
+    result.deltas.duration < 0 ? 'positive' : result.deltas.duration > 0 ? 'negative' : 'neutral'
+  );
+
+  renderDeltaCard('deltaStepCount', 'deltaStepCountValue', 'deltaStepCountPct',
+    `${result.deltas.stepCount >= 0 ? '+' : ''}${result.deltas.stepCount}`,
+    `${result.before.stepCount} -> ${result.after.stepCount}`,
+    result.deltas.stepCount < 0 ? 'positive' : result.deltas.stepCount > 0 ? 'negative' : 'neutral'
+  );
+
+  renderDeltaCard('deltaVAPct', 'deltaVAPctValue', 'deltaVAPctPct',
+    `${result.deltas.vaPct >= 0 ? '+' : ''}${result.deltas.vaPct.toFixed(1)}%`,
+    `${result.before.vaPct.toFixed(0)}% -> ${result.after.vaPct.toFixed(0)}%`,
+    result.deltas.vaPct > 0 ? 'positive' : result.deltas.vaPct < 0 ? 'negative' : 'neutral'
+  );
+
+  renderDeltaCard('deltaOverall', 'deltaOverallValue', 'deltaOverallPct',
+    `${result.overallImprovement >= 0 ? '+' : ''}${result.overallImprovement.toFixed(1)}%`,
+    result.overallImprovement >= 0 ? 'improvement' : 'regression',
+    result.overallImprovement > 0 ? 'positive' : result.overallImprovement < 0 ? 'negative' : 'neutral'
+  );
+
+  // Render before/after timelines
+  renderComparisonTimeline('comparisonTimelineBefore', state.comparisonRecording.steps);
+  renderComparisonTimeline('comparisonTimelineAfter', state.recording.steps);
+
+  // Render step changes
+  renderComparisonChanges(result);
+}
+
+function renderDeltaCard(cardId, valueId, pctId, value, pctText, polarity) {
+  const card = document.getElementById(cardId);
+  card.className = `delta-card delta-${polarity}`;
+  document.getElementById(valueId).textContent = value;
+  document.getElementById(pctId).textContent = pctText;
+}
+
+function renderComparisonTimeline(containerId, steps) {
+  const container = document.getElementById(containerId);
+  const totalDuration = steps.reduce((sum, s) => sum + (s.duration_secs || 0), 0);
+
+  if (totalDuration === 0) {
+    container.innerHTML = '<div style="width:100%;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--vs-text-muted)">No data</div>';
+    return;
+  }
+
+  container.innerHTML = steps.map(step => {
+    const pct = ((step.duration_secs || 0) / totalDuration) * 100;
+    const vaClass = step.va_type || 'undetermined';
+    return `<div class="timeline-block ${vaClass}" style="width:${Math.max(pct, 0.5)}%"></div>`;
+  }).join('');
+}
+
+function renderComparisonChanges(result) {
+  const container = document.getElementById('comparisonChanges');
+  const items = [];
+
+  for (const match of result.removed) {
+    items.push(`<div class="comparison-change-item">
+      <span class="comparison-change-badge removed">Removed</span>
+      <span>${escapeHtml(match.before.stage_name || 'Unnamed step')}</span>
+    </div>`);
+  }
+
+  for (const match of result.added) {
+    items.push(`<div class="comparison-change-item">
+      <span class="comparison-change-badge added">Added</span>
+      <span>${escapeHtml(match.after.stage_name || 'Unnamed step')}</span>
+    </div>`);
+  }
+
+  for (const match of result.changed) {
+    const delta = match.durationDelta || 0;
+    const sign = delta >= 0 ? '+' : '';
+    items.push(`<div class="comparison-change-item">
+      <span class="comparison-change-badge changed">Changed</span>
+      <span>${escapeHtml(match.before.stage_name || 'Unnamed step')} (${sign}${delta.toFixed(1)}s)</span>
+    </div>`);
+  }
+
+  if (items.length === 0) {
+    container.innerHTML = '<div class="text-sm text-muted">No step changes detected.</div>';
+  } else {
+    container.innerHTML = items.join('');
+  }
+}
+
+// ============================================================
+// Feature 3: Monitor Controls
+// ============================================================
+function setupMonitorControls() {
+  document.querySelectorAll('input[name="monitorMode"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      state.monitorMode = e.target.value;
+      const monitorSelect = document.getElementById('monitorSelect');
+      monitorSelect.classList.toggle('hidden', e.target.value !== 'specific');
+      applyMonitorSettings();
+    });
+  });
+
+  document.getElementById('monitorSelect')?.addEventListener('change', (e) => {
+    state.selectedDisplayId = e.target.value ? parseInt(e.target.value) : null;
+    applyMonitorSettings();
+    updateMonitorLayoutHighlight();
+  });
+}
+
+async function loadDisplays() {
+  try {
+    const displays = await window.api.capture.getDisplays();
+    state.displays = displays || [];
+    renderMonitorLayout();
+
+    // Load saved settings
+    const settings = await window.api.capture.getDisplaySettings();
+    if (settings.followActiveWindow) {
+      state.monitorMode = 'follow';
+      document.getElementById('monitorModeFollow').checked = true;
+    } else if (settings.displayId) {
+      state.monitorMode = 'specific';
+      state.selectedDisplayId = settings.displayId;
+      document.getElementById('monitorModeSpecific').checked = true;
+      document.getElementById('monitorSelect').classList.remove('hidden');
+      document.getElementById('monitorSelect').value = settings.displayId;
+    }
+    updateMonitorLayoutHighlight();
+  } catch (err) {
+    console.error('Failed to load displays:', err);
+  }
+}
+
+function renderMonitorLayout() {
+  const container = document.getElementById('monitorLayout');
+  const select = document.getElementById('monitorSelect');
+
+  if (!state.displays || state.displays.length === 0) {
+    container.innerHTML = '<div class="text-xs text-muted">No displays detected</div>';
+    return;
+  }
+
+  // Find min/max bounds for proportional rendering
+  let minX = Infinity, minY = Infinity, maxRight = -Infinity, maxBottom = -Infinity;
+  state.displays.forEach(d => {
+    minX = Math.min(minX, d.bounds.x);
+    minY = Math.min(minY, d.bounds.y);
+    maxRight = Math.max(maxRight, d.bounds.x + d.bounds.width);
+    maxBottom = Math.max(maxBottom, d.bounds.y + d.bounds.height);
+  });
+
+  const totalWidth = maxRight - minX;
+  const totalHeight = maxBottom - minY;
+  const scale = Math.min(300 / totalWidth, 100 / totalHeight);
+
+  container.innerHTML = state.displays.map(d => {
+    const w = Math.round(d.bounds.width * scale);
+    const h = Math.round(d.bounds.height * scale);
+    const primaryClass = d.isPrimary ? 'primary' : '';
+    return `
+      <div class="monitor-rect ${primaryClass}" data-display-id="${d.id}"
+           style="width:${w}px;height:${h}px">
+        <span class="monitor-rect-label">${escapeHtml(d.label)}</span>
+        <span class="monitor-rect-size">${d.bounds.width}x${d.bounds.height}</span>
+      </div>
+    `;
+  }).join('');
+
+  // Click to select
+  container.querySelectorAll('.monitor-rect').forEach(rect => {
+    rect.addEventListener('click', () => {
+      const displayId = parseInt(rect.dataset.displayId);
+      state.selectedDisplayId = displayId;
+      state.monitorMode = 'specific';
+      document.getElementById('monitorModeSpecific').checked = true;
+      document.getElementById('monitorSelect').classList.remove('hidden');
+      document.getElementById('monitorSelect').value = displayId;
+      updateMonitorLayoutHighlight();
+      applyMonitorSettings();
+    });
+  });
+
+  // Populate select dropdown
+  select.innerHTML = `<option value="">Select display...</option>` +
+    state.displays.map(d =>
+      `<option value="${d.id}">${escapeHtml(d.label)}${d.isPrimary ? ' (Primary)' : ''} - ${d.bounds.width}x${d.bounds.height}</option>`
+    ).join('');
+}
+
+function updateMonitorLayoutHighlight() {
+  const container = document.getElementById('monitorLayout');
+  container.querySelectorAll('.monitor-rect').forEach(rect => {
+    const id = parseInt(rect.dataset.displayId);
+    const isActive = state.monitorMode === 'specific' && state.selectedDisplayId === id;
+    const isPrimaryActive = state.monitorMode === 'primary' && rect.classList.contains('primary');
+    rect.classList.toggle('active', isActive || isPrimaryActive);
+  });
+}
+
+async function applyMonitorSettings() {
+  try {
+    if (state.monitorMode === 'follow') {
+      await window.api.capture.setFollowActiveWindow(true);
+      await window.api.capture.setActiveDisplay(null);
+    } else if (state.monitorMode === 'specific' && state.selectedDisplayId) {
+      await window.api.capture.setFollowActiveWindow(false);
+      await window.api.capture.setActiveDisplay(state.selectedDisplayId);
+    } else {
+      // primary
+      await window.api.capture.setFollowActiveWindow(false);
+      await window.api.capture.setActiveDisplay(null);
+    }
+    updateMonitorLayoutHighlight();
+  } catch (err) {
+    console.error('Failed to apply monitor settings:', err);
+  }
 }
 
 // ============================================================

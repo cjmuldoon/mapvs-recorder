@@ -1,9 +1,11 @@
-const { app, BrowserWindow, ipcMain, shell, globalShortcut, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, globalShortcut, nativeImage, screen, powerMonitor } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const { setupTray } = require('./tray');
-const { captureScreen, captureRegion, getActiveWindow } = require('../capture/screenshot');
+const { captureScreen, captureRegion, getActiveWindow, getDisplays, getActiveDisplay } = require('../capture/screenshot');
 const { Recorder } = require('../capture/recorder');
+
+let regionOverlayWindow = null;
 
 const store = new Store({
   defaults: {
@@ -128,11 +130,96 @@ function setupIPC() {
     }
   });
 
+  // Region selection overlay
+  ipcMain.handle('capture:select-region', async () => {
+    return new Promise((resolve) => {
+      // Close any existing overlay
+      if (regionOverlayWindow && !regionOverlayWindow.isDestroyed()) {
+        regionOverlayWindow.close();
+        regionOverlayWindow = null;
+      }
+
+      // Get the primary display bounds for full-screen overlay
+      const display = screen.getPrimaryDisplay();
+      const { x, y, width, height } = display.bounds;
+
+      regionOverlayWindow = new BrowserWindow({
+        x,
+        y,
+        width,
+        height,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        resizable: false,
+        movable: false,
+        fullscreenable: false,
+        hasShadow: false,
+        webPreferences: {
+          contextIsolation: false,
+          nodeIntegration: true
+        }
+      });
+
+      regionOverlayWindow.setVisibleOnAllWorkspaces(true);
+      regionOverlayWindow.loadFile(path.join(__dirname, '../capture/region-overlay.html'));
+
+      // Prevent the overlay window from being hidden behind other windows
+      regionOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+
+      ipcMain.once('region-overlay:selected', (_event, bounds) => {
+        // Store the selected region persistently
+        store.set('capture_region', bounds);
+
+        if (regionOverlayWindow && !regionOverlayWindow.isDestroyed()) {
+          regionOverlayWindow.close();
+        }
+        regionOverlayWindow = null;
+
+        resolve({ success: true, bounds });
+      });
+
+      ipcMain.once('region-overlay:cancel', () => {
+        if (regionOverlayWindow && !regionOverlayWindow.isDestroyed()) {
+          regionOverlayWindow.close();
+        }
+        regionOverlayWindow = null;
+
+        resolve({ success: false, cancelled: true });
+      });
+
+      regionOverlayWindow.on('closed', () => {
+        regionOverlayWindow = null;
+        // Clean up listeners if window was closed externally
+        ipcMain.removeAllListeners('region-overlay:selected');
+        ipcMain.removeAllListeners('region-overlay:cancel');
+        resolve({ success: false, cancelled: true });
+      });
+    });
+  });
+
+  ipcMain.handle('capture:set-region', async (_event, bounds) => {
+    store.set('capture_region', bounds);
+    return { success: true, bounds };
+  });
+
+  ipcMain.handle('capture:clear-region', async () => {
+    store.delete('capture_region');
+    return { success: true };
+  });
+
+  ipcMain.handle('capture:get-region', async () => {
+    const region = store.get('capture_region', null);
+    return { success: true, bounds: region };
+  });
+
   // Recording handlers
   ipcMain.handle('recording:start', async (_event, mode) => {
     const interval = store.get('preferences.screenshot_interval', 5000);
     const storagePath = store.get('preferences.storage_path');
-    recorder = new Recorder({ mode, interval, storagePath });
+    const captureRegionBounds = store.get('capture_region', null);
+    recorder = new Recorder({ mode, interval, storagePath, captureRegionBounds });
     await recorder.start();
     if (tray) tray.updateStatus('recording');
     mainWindow?.webContents.send('recording:status-changed', 'recording');
@@ -224,6 +311,33 @@ function setupIPC() {
     } catch (err) {
       return { success: false, error: err.message };
     }
+  });
+
+  // System handlers (idle detection for Feature 2)
+  ipcMain.handle('system:getIdleTime', async () => {
+    return powerMonitor.getSystemIdleTime();
+  });
+
+  // Multi-monitor handlers (Feature 3)
+  ipcMain.handle('capture:getDisplays', async () => {
+    return getDisplays();
+  });
+
+  ipcMain.handle('capture:setActiveDisplay', async (_event, displayId) => {
+    store.set('capture_display_id', displayId);
+    return { success: true };
+  });
+
+  ipcMain.handle('capture:setFollowActiveWindow', async (_event, follow) => {
+    store.set('capture_follow_active_window', follow);
+    return { success: true };
+  });
+
+  ipcMain.handle('capture:getDisplaySettings', async () => {
+    return {
+      displayId: store.get('capture_display_id', null),
+      followActiveWindow: store.get('capture_follow_active_window', false)
+    };
   });
 
   // Settings handlers

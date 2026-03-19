@@ -14,7 +14,20 @@ contextBridge.exposeInMainWorld('api', {
   capture: {
     screenshot: () => ipcRenderer.invoke('capture:screenshot'),
     screenshotRegion: (bounds) => ipcRenderer.invoke('capture:screenshot-region', bounds),
-    activeWindow: () => ipcRenderer.invoke('capture:active-window')
+    activeWindow: () => ipcRenderer.invoke('capture:active-window'),
+    selectRegion: () => ipcRenderer.invoke('capture:select-region'),
+    setRegion: (bounds) => ipcRenderer.invoke('capture:set-region', bounds),
+    clearRegion: () => ipcRenderer.invoke('capture:clear-region'),
+    getRegion: () => ipcRenderer.invoke('capture:get-region'),
+    getDisplays: () => ipcRenderer.invoke('capture:getDisplays'),
+    setActiveDisplay: (id) => ipcRenderer.invoke('capture:setActiveDisplay', id),
+    setFollowActiveWindow: (follow) => ipcRenderer.invoke('capture:setFollowActiveWindow', follow),
+    getDisplaySettings: () => ipcRenderer.invoke('capture:getDisplaySettings')
+  },
+
+  // System
+  system: {
+    getIdleTime: () => ipcRenderer.invoke('system:getIdleTime')
   },
 
   // Recording

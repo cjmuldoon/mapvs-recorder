@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Select Region</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.25);
+      cursor: crosshair;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    #selection {
+      position: absolute;
+      border: 2px solid #2563EB;
+      background: rgba(37, 99, 235, 0.15);
+      display: none;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    #dimensions {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.75);
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: 'SF Mono', Menlo, Monaco, monospace;
+      display: none;
+      pointer-events: none;
+      z-index: 20;
+      white-space: nowrap;
+    }
+
+    #instructions {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      color: #fff;
+      padding: 16px 28px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      text-align: center;
+      z-index: 5;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    #instructions .hint {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.6);
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div id="instructions">
+    Click and drag to select a capture region
+    <div class="hint">Press Escape to cancel</div>
+  </div>
+  <div id="selection"></div>
+  <div id="dimensions"></div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    const selectionEl = document.getElementById('selection');
+    const dimensionsEl = document.getElementById('dimensions');
+    const instructionsEl = document.getElementById('instructions');
+
+    let isDrawing = false;
+    let startX = 0;
+    let startY = 0;
+
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      isDrawing = true;
+      startX = e.screenX;
+      startY = e.screenY;
+
+      // Position selection box using client coords for display
+      selectionEl.style.left = e.clientX + 'px';
+      selectionEl.style.top = e.clientY + 'px';
+      selectionEl.style.width = '0px';
+      selectionEl.style.height = '0px';
+      selectionEl.style.display = 'block';
+      dimensionsEl.style.display = 'block';
+      instructionsEl.style.opacity = '0';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDrawing) return;
+
+      const clientStartX = e.clientX - (e.screenX - startX);
+      const clientStartY = e.clientY - (e.screenY - startY);
+
+      const x = Math.min(clientStartX, e.clientX);
+      const y = Math.min(clientStartY, e.clientY);
+      const w = Math.abs(e.clientX - clientStartX);
+      const h = Math.abs(e.clientY - clientStartY);
+
+      selectionEl.style.left = x + 'px';
+      selectionEl.style.top = y + 'px';
+      selectionEl.style.width = w + 'px';
+      selectionEl.style.height = h + 'px';
+
+      // Position dimensions label
+      dimensionsEl.textContent = `${w} x ${h}`;
+      dimensionsEl.style.left = (x + w + 8) + 'px';
+      dimensionsEl.style.top = (y - 4) + 'px';
+
+      // If label would go off-screen right, put it inside
+      if (x + w + 8 + 100 > window.innerWidth) {
+        dimensionsEl.style.left = (x + 4) + 'px';
+        dimensionsEl.style.top = (y + h + 8) + 'px';
+      }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (!isDrawing) return;
+      isDrawing = false;
+
+      const x = Math.min(startX, e.screenX);
+      const y = Math.min(startY, e.screenY);
+      const w = Math.abs(e.screenX - startX);
+      const h = Math.abs(e.screenY - startY);
+
+      // Require minimum size of 20x20
+      if (w < 20 || h < 20) {
+        ipcRenderer.send('region-overlay:cancel');
+        return;
+      }
+
+      // Send screen coordinates (not client/window coords)
+      ipcRenderer.send('region-overlay:selected', {
+        x: Math.round(x),
+        y: Math.round(y),
+        width: Math.round(w),
+        height: Math.round(h)
+      });
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        ipcRenderer.send('region-overlay:cancel');
+      }
+    });
+  </script>
+</body>
+</html>
