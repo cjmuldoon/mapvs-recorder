@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, shell, globalShortcut, nativeImage, screen, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, globalShortcut, nativeImage, screen, powerMonitor } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const Store = require('electron-store');
 const { setupTray } = require('./tray');
 const { captureScreen, captureRegion, getActiveWindow, getDisplays, getActiveDisplay } = require('../capture/screenshot');
@@ -214,12 +215,45 @@ function setupIPC() {
     return { success: true, bounds: region };
   });
 
+  // Dialog handlers
+  ipcMain.handle('dialog:openFile', async () => {
+    const result = await dialog.showOpenDialog({
+      filters: [{ name: 'Session', extensions: ['json'] }],
+      properties: ['openFile']
+    });
+    if (result.canceled) return null;
+    return fs.readFileSync(result.filePaths[0], 'utf8');
+  });
+
+  // Photo/file attachment handler
+  ipcMain.handle('capture:attachFile', async () => {
+    const result = await dialog.showOpenDialog({
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+      properties: ['openFile']
+    });
+    if (result.canceled) return null;
+
+    const sourcePath = result.filePaths[0];
+    const storagePath = store.get('preferences.storage_path');
+    const filename = `attachment_${Date.now()}_${path.basename(sourcePath)}`;
+    const destPath = path.join(storagePath, filename);
+
+    // Ensure storage dir exists
+    if (!fs.existsSync(storagePath)) {
+      fs.mkdirSync(storagePath, { recursive: true });
+    }
+
+    fs.copyFileSync(sourcePath, destPath);
+    return destPath;
+  });
+
   // Recording handlers
   ipcMain.handle('recording:start', async (_event, mode) => {
     const interval = store.get('preferences.screenshot_interval', 5000);
+    const quality = store.get('preferences.screenshot_quality', 'medium');
     const storagePath = store.get('preferences.storage_path');
     const captureRegionBounds = store.get('capture_region', null);
-    recorder = new Recorder({ mode, interval, storagePath, captureRegionBounds });
+    recorder = new Recorder({ mode, interval, storagePath, captureRegionBounds, quality });
     await recorder.start();
     if (tray) tray.updateStatus('recording');
     mainWindow?.webContents.send('recording:status-changed', 'recording');
@@ -234,10 +268,12 @@ function setupIPC() {
     return { success: true, data: result };
   });
 
-  ipcMain.handle('recording:add-step', async (_event, notes) => {
+  ipcMain.handle('recording:add-step', async (_event, stepData) => {
     if (!recorder) return { success: false, error: 'No active recording' };
     try {
-      const step = await recorder.addStep(notes);
+      // Support both string (legacy) and object { notes, resource, attachments }
+      const opts = typeof stepData === 'string' ? { notes: stepData } : (stepData || {});
+      const step = await recorder.addStep(opts.notes || '', opts.resource || '', opts.attachments || []);
       return { success: true, data: step };
     } catch (err) {
       return { success: false, error: err.message };
@@ -308,6 +344,21 @@ function setupIPC() {
       const api = require('../sync/api');
       const result = await api.createMapFromRecording(token, apiUrl, name, recording);
       return { success: true, data: result };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Template handlers
+  ipcMain.handle('sync:get-templates', async () => {
+    const token = store.get('token');
+    const apiUrl = store.get('api_url');
+    if (!token) return { success: false, error: 'No token configured' };
+
+    try {
+      const api = require('../sync/api');
+      const templates = await api.getTemplates(token, apiUrl);
+      return { success: true, data: templates };
     } catch (err) {
       return { success: false, error: err.message };
     }

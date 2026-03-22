@@ -22,7 +22,13 @@ contextBridge.exposeInMainWorld('api', {
     getDisplays: () => ipcRenderer.invoke('capture:getDisplays'),
     setActiveDisplay: (id) => ipcRenderer.invoke('capture:setActiveDisplay', id),
     setFollowActiveWindow: (follow) => ipcRenderer.invoke('capture:setFollowActiveWindow', follow),
-    getDisplaySettings: () => ipcRenderer.invoke('capture:getDisplaySettings')
+    getDisplaySettings: () => ipcRenderer.invoke('capture:getDisplaySettings'),
+    attachFile: () => ipcRenderer.invoke('capture:attachFile')
+  },
+
+  // Dialog
+  dialog: {
+    openFile: () => ipcRenderer.invoke('dialog:openFile')
   },
 
   // System
@@ -34,7 +40,7 @@ contextBridge.exposeInMainWorld('api', {
   recording: {
     start: (mode) => ipcRenderer.invoke('recording:start', mode),
     stop: () => ipcRenderer.invoke('recording:stop'),
-    addStep: (notes) => ipcRenderer.invoke('recording:add-step', notes),
+    addStep: (stepData) => ipcRenderer.invoke('recording:add-step', stepData),
     getStatus: () => ipcRenderer.invoke('recording:get-status'),
     onStatusChanged: (callback) => ipcRenderer.on('recording:status-changed', (_e, status) => callback(status)),
     onNewStep: (callback) => ipcRenderer.on('shortcut:new-step', () => callback()),
@@ -46,7 +52,8 @@ contextBridge.exposeInMainWorld('api', {
     upload: (data) => ipcRenderer.invoke('sync:upload', data),
     testConnection: () => ipcRenderer.invoke('sync:test-connection'),
     getMaps: () => ipcRenderer.invoke('sync:get-maps'),
-    createMap: (data) => ipcRenderer.invoke('sync:create-map', data)
+    createMap: (data) => ipcRenderer.invoke('sync:create-map', data),
+    getTemplates: () => ipcRenderer.invoke('sync:get-templates')
   },
 
   // Settings

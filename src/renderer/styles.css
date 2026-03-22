@@ -1897,3 +1897,256 @@ html, body {
 .monitor-radio-label input[type="radio"] {
   accent-color: var(--vs-primary);
 }
+
+/* ── Feature: Template Picker ── */
+.template-search-wrapper {
+  margin-bottom: 8px;
+}
+
+.template-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius);
+  background: var(--vs-surface);
+  margin-bottom: 12px;
+}
+
+.template-list-group {
+  padding: 4px 0;
+}
+
+.template-list-group-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vs-text-muted);
+  padding: 6px 12px 2px;
+}
+
+.template-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background var(--vs-transition-fast);
+  font-size: 13px;
+  color: var(--vs-text);
+}
+
+.template-list-item:hover {
+  background: var(--vs-hover-bg);
+}
+
+.template-list-item.selected {
+  background: var(--vs-primary-light);
+  color: var(--vs-primary);
+  font-weight: 600;
+}
+
+.template-list-item-steps {
+  font-size: 11px;
+  color: var(--vs-text-muted);
+}
+
+.template-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.template-checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--vs-radius-sm);
+  background: var(--vs-surface);
+  border: 1px solid var(--vs-border-subtle);
+  font-size: 12px;
+  color: var(--vs-text);
+}
+
+.template-checklist-item.completed {
+  background: var(--vs-success-light);
+  border-color: var(--vs-success);
+  text-decoration: line-through;
+  color: var(--vs-text-muted);
+}
+
+.template-checklist-item .check-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--vs-border);
+  flex-shrink: 0;
+}
+
+.template-checklist-item.completed .check-icon {
+  background: var(--vs-success);
+  border-color: var(--vs-success);
+}
+
+.template-step-prompt {
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: var(--vs-primary-50);
+  border: 1px solid var(--vs-primary-light);
+  border-radius: var(--vs-radius);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.template-step-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--vs-radius-pill);
+  background: var(--vs-primary);
+  color: white;
+  white-space: nowrap;
+}
+
+.template-step-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vs-primary);
+}
+
+/* ── Feature: Resource Input ── */
+.notes-input-area {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ── Feature: Photo Attachments ── */
+.step-attachments-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pending-attachments {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pending-attachment {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--vs-radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--vs-border);
+}
+
+.pending-attachment img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pending-attachment .remove-attachment {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--vs-danger);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+}
+
+.step-attachment-thumbs {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.step-attachment-thumb {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--vs-radius-xs);
+  overflow: hidden;
+  border: 1px solid var(--vs-border);
+  cursor: pointer;
+}
+
+.step-attachment-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.step-attachment-thumb .remove-step-attachment {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--vs-danger);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0;
+  transition: opacity var(--vs-transition-fast);
+}
+
+.step-attachment-thumb:hover .remove-step-attachment {
+  opacity: 1;
+}
+
+/* ── Feature: Resource field in review ── */
+.step-resource-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.step-resource-field .resource-icon {
+  color: var(--vs-text-muted);
+  flex-shrink: 0;
+}
+
+.step-resource-field input {
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--vs-radius-xs);
+  background: transparent;
+  color: var(--vs-text-secondary);
+  transition: all var(--vs-transition-fast);
+  width: 100%;
+}
+
+.step-resource-field input:hover,
+.step-resource-field input:focus {
+  border-color: var(--vs-border);
+  background: var(--vs-surface);
+  outline: none;
+}

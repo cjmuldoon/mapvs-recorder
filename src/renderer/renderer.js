@@ -31,7 +31,14 @@ const state = {
   comparisonRecording: null, // Feature 1: the "before" recording for comparison
   monitorMode: 'primary', // Feature 3: 'primary' | 'specific' | 'follow'
   selectedDisplayId: null, // Feature 3: specific display ID
-  displays: [] // Feature 3: detected displays
+  displays: [], // Feature 3: detected displays
+  // Template support
+  templates: [],
+  selectedTemplate: null,
+  templateStepIndex: 0,
+  templateEnabled: false,
+  // Photo attachments pending for next capture
+  pendingAttachments: []
 };
 
 // ============================================================
@@ -46,6 +53,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupRecordingControls();
   setupRegionControls();
   setupComparisonControls();
+  setupTemplateControls();
+  setupAttachmentControls();
   setupMonitorControls();
   setupSyncControls();
   setupSettingsControls();
@@ -204,9 +213,15 @@ async function startRecording(mode) {
       state.recordingStartTime = Date.now();
       state.steps = [];
       state.uniqueWindows.clear();
+      state.templateStepIndex = 0;
       updateRecordingUI();
       startTimer();
       showToast('Recording started', 'info');
+
+      // Show template step prompt if template is active
+      if (state.templateEnabled && state.selectedTemplate) {
+        updateTemplateStepPrompt();
+      }
 
       if (mode === 'screen') {
         startStepPolling();
@@ -239,19 +254,30 @@ async function stopRecording() {
 
 async function captureManualStep() {
   const notesInput = document.getElementById('stepNotesInput');
+  const resourceInput = document.getElementById('stepResourceInput');
   const notes = notesInput.value.trim();
+  const resource = resourceInput ? resourceInput.value.trim() : '';
+  const attachments = [...state.pendingAttachments];
 
   try {
-    const result = await window.api.recording.addStep(notes);
+    const result = await window.api.recording.addStep({ notes, resource, attachments });
     if (result.success) {
       state.steps.push(result.data);
       if (result.data.window_title) {
         state.uniqueWindows.add(result.data.window_title);
       }
       notesInput.value = '';
+      if (resourceInput) resourceInput.value = '';
+      state.pendingAttachments = [];
+      updatePendingAttachmentsUI();
       updateStepCounts();
       updateLatestScreenshot(result.data);
       updateRecentSteps();
+
+      // Advance template step if using a template
+      if (state.templateEnabled && state.selectedTemplate) {
+        advanceTemplateStep();
+      }
 
       // Flash the capture button
       const btn = document.getElementById('captureStepBtn');
@@ -281,6 +307,11 @@ function updateRecordingUI() {
     document.getElementById('recordingModeLabel').textContent =
       state.recordingMode === 'screen' ? 'Screen Recording' : 'Manual Steps';
     document.getElementById('manualCaptureArea').classList.toggle('hidden', state.recordingMode !== 'manual');
+
+    // Show template step prompt during manual recording
+    if (state.recordingMode === 'manual' && state.templateEnabled && state.selectedTemplate) {
+      updateTemplateStepPrompt();
+    }
   }
 
   // Disable mode toggle during recording
@@ -413,6 +444,12 @@ function renderReviewSteps() {
         <input class="editable-field" value="${escapeAttr(step.notes || '')}"
           data-index="${index}" data-field="notes"
           placeholder="Add notes..." style="margin-top:4px" />
+        <div class="step-resource-field">
+          <svg class="resource-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <input value="${escapeAttr(step.resource || '')}"
+            data-index="${index}" data-field="resource"
+            placeholder="Resource / Asset..." />
+        </div>
         <div class="time-input-group">
           <div>
             <label>Cycle (s)</label><br>
@@ -431,6 +468,15 @@ function renderReviewSteps() {
           <span class="idle-value">${(step.active_seconds || 0).toFixed(1)}s</span>
           <span class="idle-label">Idle:</span>
           <span class="idle-value">${(step.idle_seconds || 0).toFixed(1)}s</span>
+        </div>` : ''}
+        ${(step.attachments && step.attachments.length > 0) ? `
+        <div class="step-attachment-thumbs">
+          ${step.attachments.map((att, attIdx) => `
+            <div class="step-attachment-thumb">
+              <img src="file://${att}" alt="Attachment ${attIdx + 1}" />
+              <button class="remove-step-attachment" data-index="${index}" data-att-index="${attIdx}" data-action="remove-attachment" title="Remove">&times;</button>
+            </div>
+          `).join('')}
         </div>` : ''}
       </div>
       <div class="step-actions">
@@ -466,6 +512,8 @@ function handleReviewInput(e) {
 
   if (field === 'cycle_time' || field === 'wait_time') {
     state.steps[index][field] = parseFloat(e.target.value) || 0;
+  } else if (field === 'resource') {
+    state.steps[index].resource = e.target.value;
   } else {
     state.steps[index][field] = e.target.value;
   }
@@ -498,6 +546,16 @@ function handleReviewClick(e) {
     renderReviewSteps();
     document.getElementById('reviewSummary').textContent = `${state.steps.length} steps captured`;
     showToast('Step removed', 'info');
+  }
+
+  if (action === 'remove-attachment') {
+    const attIndex = parseInt(btn.dataset.attIndex);
+    if (!isNaN(attIndex) && state.steps[index].attachments) {
+      state.steps[index].attachments.splice(attIndex, 1);
+      if (state.recording) state.recording.steps = state.steps;
+      renderReviewSteps();
+      showToast('Attachment removed', 'info');
+    }
   }
 }
 
@@ -1030,35 +1088,22 @@ function setupComparisonControls() {
 }
 
 async function loadComparisonFile() {
-  // Use a hidden file input to pick a session.json
-  const fileInput = document.createElement('input');
-  fileInput.type = 'file';
-  fileInput.accept = '.json';
+  try {
+    const fileContent = await window.api.dialog.openFile();
+    if (!fileContent) return; // User cancelled
 
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const data = JSON.parse(evt.target.result);
-        if (!data.steps || !Array.isArray(data.steps)) {
-          showToast('Invalid session file: no steps found', 'error');
-          return;
-        }
-        state.comparisonRecording = data;
-        renderComparison();
-        showToast('Comparison loaded', 'success');
-      } catch (err) {
-        showToast('Failed to parse session file', 'error');
-        console.error('Comparison parse error:', err);
-      }
-    };
-    reader.readAsText(file);
-  });
-
-  fileInput.click();
+    const data = JSON.parse(fileContent);
+    if (!data.steps || !Array.isArray(data.steps)) {
+      showToast('Invalid session file: no steps found', 'error');
+      return;
+    }
+    state.comparisonRecording = data;
+    renderComparison();
+    showToast('Comparison loaded', 'success');
+  } catch (err) {
+    showToast('Failed to parse session file', 'error');
+    console.error('Comparison parse error:', err);
+  }
 }
 
 function closeComparison() {
@@ -1292,6 +1337,250 @@ async function applyMonitorSettings() {
   } catch (err) {
     console.error('Failed to apply monitor settings:', err);
   }
+}
+
+// ============================================================
+// Feature: Photo Attachment Controls
+// ============================================================
+function setupAttachmentControls() {
+  document.getElementById('attachPhotoBtn')?.addEventListener('click', attachPhoto);
+}
+
+async function attachPhoto() {
+  try {
+    const filePath = await window.api.capture.attachFile();
+    if (!filePath) return;
+
+    state.pendingAttachments.push(filePath);
+    updatePendingAttachmentsUI();
+    showToast('Photo attached', 'success');
+  } catch (err) {
+    showToast('Failed to attach photo', 'error');
+    console.error('Attach photo error:', err);
+  }
+}
+
+function updatePendingAttachmentsUI() {
+  const container = document.getElementById('pendingAttachments');
+  if (!container) return;
+
+  if (state.pendingAttachments.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = state.pendingAttachments.map((filePath, idx) => `
+    <div class="pending-attachment">
+      <img src="file://${filePath}" alt="Attachment ${idx + 1}" />
+      <button class="remove-attachment" data-att-idx="${idx}" title="Remove">&times;</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.remove-attachment').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt(e.target.dataset.attIdx);
+      state.pendingAttachments.splice(idx, 1);
+      updatePendingAttachmentsUI();
+    });
+  });
+}
+
+// ============================================================
+// Feature: Guided Recording Templates
+// ============================================================
+function setupTemplateControls() {
+  const toggle = document.getElementById('templateToggle');
+  if (!toggle) return;
+
+  toggle.addEventListener('click', () => {
+    state.templateEnabled = !state.templateEnabled;
+    toggle.classList.toggle('active', state.templateEnabled);
+
+    const picker = document.getElementById('templatePicker');
+    picker.classList.toggle('hidden', !state.templateEnabled);
+
+    if (state.templateEnabled && state.connected && state.templates.length === 0) {
+      loadTemplates();
+    }
+  });
+
+  document.getElementById('templateSearchInput')?.addEventListener('input', (e) => {
+    filterTemplates(e.target.value.trim().toLowerCase());
+  });
+}
+
+async function loadTemplates() {
+  try {
+    const result = await window.api.sync.getTemplates();
+    if (result.success && Array.isArray(result.data)) {
+      state.templates = result.data;
+      renderTemplateList();
+    } else {
+      renderTemplateListFallback();
+    }
+  } catch (err) {
+    console.error('Failed to load templates:', err);
+    renderTemplateListFallback();
+  }
+}
+
+function renderTemplateListFallback() {
+  // Show built-in sample templates when not connected
+  state.templates = [
+    {
+      id: 'builtin-1',
+      name: 'Generic Process Walk',
+      industry: 'General',
+      steps: [
+        { name: 'Start / Trigger', description: 'What initiates this process?' },
+        { name: 'Input Preparation', description: 'Gather inputs and materials' },
+        { name: 'Core Processing', description: 'The main work activity' },
+        { name: 'Quality Check', description: 'Inspect or verify output' },
+        { name: 'Handoff / Delivery', description: 'Pass to next person or system' }
+      ]
+    },
+    {
+      id: 'builtin-2',
+      name: 'Office Admin Process',
+      industry: 'Admin',
+      steps: [
+        { name: 'Request Received', description: 'Email, form, or verbal request arrives' },
+        { name: 'Open System', description: 'Log into required application' },
+        { name: 'Data Entry', description: 'Enter or update information' },
+        { name: 'Approval / Review', description: 'Get sign-off or check work' },
+        { name: 'Notification Sent', description: 'Confirm completion to requestor' }
+      ]
+    },
+    {
+      id: 'builtin-3',
+      name: 'Field Service Task',
+      industry: 'Field Services',
+      steps: [
+        { name: 'Receive Work Order', description: 'Job assigned via dispatch' },
+        { name: 'Travel to Site', description: 'Drive or transit to location' },
+        { name: 'Site Assessment', description: 'Inspect and assess the work' },
+        { name: 'Perform Work', description: 'Execute the task' },
+        { name: 'Document & Close', description: 'Take photos, complete paperwork' }
+      ]
+    }
+  ];
+  renderTemplateList();
+}
+
+function renderTemplateList() {
+  const container = document.getElementById('templateList');
+  if (!state.templates || state.templates.length === 0) {
+    container.innerHTML = '<div class="text-xs text-muted" style="padding:12px;text-align:center">No templates available</div>';
+    return;
+  }
+
+  // Group by industry
+  const groups = {};
+  state.templates.forEach(t => {
+    const industry = t.industry || 'Other';
+    if (!groups[industry]) groups[industry] = [];
+    groups[industry].push(t);
+  });
+
+  container.innerHTML = Object.entries(groups).map(([industry, templates]) => `
+    <div class="template-list-group" data-industry="${escapeAttr(industry.toLowerCase())}">
+      <div class="template-list-group-title">${escapeHtml(industry)}</div>
+      ${templates.map(t => `
+        <div class="template-list-item" data-template-id="${escapeAttr(t.id)}" data-name="${escapeAttr(t.name.toLowerCase())}">
+          <span>${escapeHtml(t.name)}</span>
+          <span class="template-list-item-steps">${t.steps ? t.steps.length : 0} steps</span>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+
+  // Click to select
+  container.querySelectorAll('.template-list-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const templateId = item.dataset.templateId;
+      const template = state.templates.find(t => t.id === templateId);
+      if (template) selectTemplate(template);
+
+      // Highlight selected
+      container.querySelectorAll('.template-list-item').forEach(i => i.classList.remove('selected'));
+      item.classList.add('selected');
+    });
+  });
+}
+
+function filterTemplates(query) {
+  const items = document.querySelectorAll('#templateList .template-list-item');
+  const groups = document.querySelectorAll('#templateList .template-list-group');
+
+  if (!query) {
+    items.forEach(i => i.style.display = '');
+    groups.forEach(g => g.style.display = '');
+    return;
+  }
+
+  groups.forEach(group => {
+    let hasVisible = false;
+    group.querySelectorAll('.template-list-item').forEach(item => {
+      const name = item.dataset.name || '';
+      const visible = name.includes(query);
+      item.style.display = visible ? '' : 'none';
+      if (visible) hasVisible = true;
+    });
+    group.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+function selectTemplate(template) {
+  state.selectedTemplate = template;
+  state.templateStepIndex = 0;
+
+  // Show template info
+  const infoEl = document.getElementById('selectedTemplateInfo');
+  infoEl.classList.remove('hidden');
+  document.getElementById('selectedTemplateName').textContent = template.name;
+
+  // Render checklist
+  renderTemplateChecklist();
+}
+
+function renderTemplateChecklist() {
+  const container = document.getElementById('templateChecklist');
+  if (!state.selectedTemplate) return;
+
+  container.innerHTML = state.selectedTemplate.steps.map((step, idx) => `
+    <div class="template-checklist-item ${idx < state.templateStepIndex ? 'completed' : ''}" data-step-idx="${idx}">
+      <div class="check-icon"></div>
+      <span>${escapeHtml(step.name)}</span>
+    </div>
+  `).join('');
+}
+
+function advanceTemplateStep() {
+  if (!state.selectedTemplate) return;
+
+  state.templateStepIndex++;
+  renderTemplateChecklist();
+  updateTemplateStepPrompt();
+
+  if (state.templateStepIndex >= state.selectedTemplate.steps.length) {
+    showToast('Template complete!', 'success');
+  }
+}
+
+function updateTemplateStepPrompt() {
+  const promptEl = document.getElementById('templateStepPrompt');
+  const badgeEl = document.getElementById('templateStepBadge');
+  const nameEl = document.getElementById('templateStepName');
+
+  if (!state.templateEnabled || !state.selectedTemplate || state.templateStepIndex >= state.selectedTemplate.steps.length) {
+    promptEl.classList.add('hidden');
+    return;
+  }
+
+  const currentStep = state.selectedTemplate.steps[state.templateStepIndex];
+  promptEl.classList.remove('hidden');
+  badgeEl.textContent = `Step ${state.templateStepIndex + 1}`;
+  nameEl.textContent = currentStep.name;
 }
 
 // ============================================================

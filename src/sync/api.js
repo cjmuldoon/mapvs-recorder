@@ -173,9 +173,34 @@ async function createMapFromRecording(token, apiUrl, name, recording) {
   return await response.json();
 }
 
+/**
+ * Get available recording templates from MapVS.com.
+ * @param {string} token - Bearer token
+ * @param {string} apiUrl - Base API URL
+ * @returns {Promise<Array<{ id: string, name: string, industry: string, steps: Array<{ name: string, description: string }> }>>}
+ */
+async function getTemplates(token, apiUrl) {
+  const response = await fetch(`${apiUrl}/templates`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to fetch templates: ${response.status} ${text}`);
+  }
+
+  const data = await response.json();
+  return data.templates || data || [];
+}
+
 module.exports = {
   testConnection,
   getMaps,
   uploadRecording,
-  createMapFromRecording
+  createMapFromRecording,
+  getTemplates
 };

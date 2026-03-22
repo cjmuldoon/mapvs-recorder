@@ -3,21 +3,19 @@ const fs = require('fs');
 const { nativeImage } = require('electron');
 
 /**
- * Capture the entire screen and save as PNG.
+ * Capture the entire screen and save with quality setting.
  * @param {string} storagePath - Directory to save screenshots
  * @param {number} [displayId] - Optional display ID to capture a specific monitor
+ * @param {string} [quality='medium'] - Quality: 'low' (50% JPEG), 'medium' (PNG), 'high' (full-res PNG)
  * @returns {Promise<string>} Path to saved screenshot
  */
-async function captureScreen(storagePath, displayId) {
+async function captureScreen(storagePath, displayId, quality = 'medium') {
   const screenshot = require('screenshot-desktop');
 
   // Ensure storage directory exists
   if (!fs.existsSync(storagePath)) {
     fs.mkdirSync(storagePath, { recursive: true });
   }
-
-  const filename = `screenshot_${Date.now()}.png`;
-  const filepath = path.join(storagePath, filename);
 
   const opts = { format: 'png' };
   if (displayId != null) {
@@ -25,33 +23,30 @@ async function captureScreen(storagePath, displayId) {
   }
 
   const imgBuffer = await screenshot(opts);
-  fs.writeFileSync(filepath, imgBuffer);
 
-  return filepath;
+  return applyQuality(imgBuffer, storagePath, quality);
 }
 
 /**
- * Capture a specific region of the screen and save as a cropped PNG.
+ * Capture a specific region of the screen and save as a cropped image.
  * Uses screenshot-desktop for full capture, then Electron's nativeImage.crop() to extract the region.
  * @param {{ x: number, y: number, width: number, height: number }} bounds - Screen coordinates
  * @param {string} storagePath - Directory to save screenshots
+ * @param {string} [quality='medium'] - Quality: 'low' (50% JPEG), 'medium' (PNG), 'high' (full-res PNG)
  * @returns {Promise<string>} Path to saved cropped screenshot
  */
-async function captureRegion(bounds, storagePath) {
+async function captureRegion(bounds, storagePath, quality = 'medium') {
   const screenshot = require('screenshot-desktop');
 
   if (!bounds || !bounds.width || !bounds.height) {
-    // No valid bounds — fall back to full screen
-    return captureScreen(storagePath);
+    // No valid bounds -- fall back to full screen
+    return captureScreen(storagePath, null, quality);
   }
 
   // Ensure storage directory exists
   if (!fs.existsSync(storagePath)) {
     fs.mkdirSync(storagePath, { recursive: true });
   }
-
-  const filename = `region_${Date.now()}.png`;
-  const filepath = path.join(storagePath, filename);
 
   // Capture the full screen as a buffer
   const imgBuffer = await screenshot({ format: 'png' });
@@ -85,7 +80,46 @@ async function captureRegion(bounds, storagePath) {
   const croppedImage = fullImage.crop(cropRect);
   const croppedBuffer = croppedImage.toPNG();
 
-  fs.writeFileSync(filepath, croppedBuffer);
+  return applyQuality(croppedBuffer, storagePath, quality, 'region');
+}
+
+/**
+ * Apply quality settings to a screenshot buffer and save it.
+ * @param {Buffer} imgBuffer - Raw image buffer (PNG)
+ * @param {string} storagePath - Directory to save
+ * @param {string} quality - 'low' | 'medium' | 'high'
+ * @param {string} [prefix='screenshot'] - Filename prefix
+ * @returns {string} Path to saved file
+ */
+function applyQuality(imgBuffer, storagePath, quality = 'medium', prefix = 'screenshot') {
+  const image = nativeImage.createFromBuffer(imgBuffer);
+  const size = image.getSize();
+
+  if (quality === 'low') {
+    // Resize to 50% and save as JPEG at 50% quality
+    const halfWidth = Math.round(size.width / 2);
+    const halfHeight = Math.round(size.height / 2);
+    const resized = image.resize({ width: halfWidth, height: halfHeight, quality: 'good' });
+    const jpegBuffer = resized.toJPEG(50);
+    const filename = `${prefix}_${Date.now()}.jpg`;
+    const filepath = path.join(storagePath, filename);
+    fs.writeFileSync(filepath, jpegBuffer);
+    return filepath;
+  }
+
+  if (quality === 'high') {
+    // Save as full-resolution PNG (no resize, no compression)
+    const pngBuffer = image.toPNG();
+    const filename = `${prefix}_${Date.now()}.png`;
+    const filepath = path.join(storagePath, filename);
+    fs.writeFileSync(filepath, pngBuffer);
+    return filepath;
+  }
+
+  // Medium (default): save as PNG at current resolution
+  const filename = `${prefix}_${Date.now()}.png`;
+  const filepath = path.join(storagePath, filename);
+  fs.writeFileSync(filepath, imgBuffer);
   return filepath;
 }
 

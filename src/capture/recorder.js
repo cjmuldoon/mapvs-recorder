@@ -15,7 +15,7 @@ class Recorder {
   /**
    * @param {{ mode: 'screen' | 'manual', interval: number, storagePath: string, captureRegionBounds?: object, idleThreshold?: number, displayId?: number, followActiveWindow?: boolean }} options
    */
-  constructor({ mode = 'manual', interval = 5000, storagePath, captureRegionBounds = null, idleThreshold = 5, displayId = null, followActiveWindow = false }) {
+  constructor({ mode = 'manual', interval = 5000, storagePath, captureRegionBounds = null, idleThreshold = 5, displayId = null, followActiveWindow = false, quality = 'medium' }) {
     this.sessionId = generateId();
     this.mode = mode;
     this.interval = interval;
@@ -24,6 +24,7 @@ class Recorder {
     this.idleThreshold = idleThreshold; // seconds — Feature 2
     this.displayId = displayId; // Feature 3: specific display to capture
     this.followActiveWindow = followActiveWindow; // Feature 3: follow active window across monitors
+    this.quality = quality; // Screenshot quality: 'low' | 'medium' | 'high'
     this.steps = [];
     this.startTime = null;
     this.endTime = null;
@@ -120,13 +121,15 @@ class Recorder {
   /**
    * Add a manual step (used in manual mode, or to annotate in screen mode).
    * @param {string} notes - User notes for this step
+   * @param {string} resource - Resource/asset name for this step
+   * @param {string[]} attachments - File paths for attached evidence photos
    * @returns {Promise<object>} The captured step
    */
-  async addStep(notes = '') {
+  async addStep(notes = '', resource = '', attachments = []) {
     if (this.status !== 'recording') {
       throw new Error('Not currently recording');
     }
-    return this._captureStep(notes);
+    return this._captureStep(notes, resource, attachments);
   }
 
   /**
@@ -144,7 +147,7 @@ class Recorder {
   /**
    * Internal: capture a single step with screenshot and window info.
    */
-  async _captureStep(notes = '') {
+  async _captureStep(notes = '', resource = '', attachments = []) {
     const timestamp = new Date().toISOString();
     let screenshotPath = null;
     let windowInfo = { title: 'Unknown', app: 'Unknown', bounds: null };
@@ -165,9 +168,9 @@ class Recorder {
 
     try {
       if (this.captureRegionBounds) {
-        screenshotPath = await captureRegion(this.captureRegionBounds, this.storagePath);
+        screenshotPath = await captureRegion(this.captureRegionBounds, this.storagePath, this.quality);
       } else {
-        screenshotPath = await captureScreen(this.storagePath, captureDisplayId);
+        screenshotPath = await captureScreen(this.storagePath, captureDisplayId, this.quality);
       }
     } catch (err) {
       console.error('Screenshot capture failed:', err.message);
@@ -190,6 +193,8 @@ class Recorder {
       window_title: windowInfo.title,
       app_name: windowInfo.app,
       notes: notes,
+      resource: resource || '',
+      attachments: attachments || [],
       stage_name: deriveStageNameFromWindow(windowInfo.title, windowInfo.app),
       va_type: 'undetermined', // va | nva | undetermined
       cycle_time: 0,
