@@ -68,5 +68,15 @@ contextBridge.exposeInMainWorld('api', {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (settings) => ipcRenderer.invoke('settings:set', settings),
     clearData: () => ipcRenderer.invoke('settings:clear-data')
+  },
+
+  // App / Auto-update
+  app: {
+    checkUpdate: () => ipcRenderer.invoke('app:check-update'),
+    installUpdate: () => ipcRenderer.invoke('app:install-update'),
+    getVersion: () => ipcRenderer.invoke('app:get-version'),
+    onUpdateAvailable: (cb) => ipcRenderer.on('update:available', (_e, info) => cb(info)),
+    onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
+    onDownloadProgress: (cb) => ipcRenderer.on('update:progress', (_e, progress) => cb(progress))
   }
 });

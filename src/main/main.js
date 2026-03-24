@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, globalShortcut, nativeImage,
 const path = require('path');
 const fs = require('fs');
 const Store = require('electron-store');
+const { autoUpdater } = require('electron-updater');
 const { setupTray } = require('./tray');
 const { captureScreen, captureRegion, getActiveWindow, getDisplays, getActiveDisplay } = require('../capture/screenshot');
 const { Recorder } = require('../capture/recorder');
@@ -561,6 +562,74 @@ function setupIPC() {
   });
 }
 
+// Auto-updater setup
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+    mainWindow?.webContents.send('update:available', {
+      version: info.version,
+      releaseNotes: info.releaseNotes
+    });
+    if (tray) tray.setUpdateAvailable(true);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version);
+    mainWindow?.webContents.send('update:downloaded', {
+      version: info.version,
+      releaseNotes: info.releaseNotes
+    });
+    if (tray) tray.setUpdateReady(true);
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    mainWindow?.webContents.send('update:progress', {
+      percent: progress.percent,
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-updater error:', err.message);
+  });
+
+  // Initial check
+  autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+    console.error('Update check failed:', err.message);
+  });
+
+  // Check every 4 hours
+  setInterval(() => {
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.error('Scheduled update check failed:', err.message);
+    });
+  }, 4 * 60 * 60 * 1000);
+}
+
+function setupUpdateIPC() {
+  ipcMain.handle('app:check-update', async () => {
+    try {
+      const result = await autoUpdater.checkForUpdatesAndNotify();
+      return { success: true, updateInfo: result?.updateInfo };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('app:install-update', async () => {
+    autoUpdater.quitAndInstall(false, true);
+  });
+
+  ipcMain.handle('app:get-version', async () => {
+    return app.getVersion();
+  });
+}
+
 // App lifecycle
 app.whenReady().then(() => {
   createWindow();
@@ -571,6 +640,8 @@ app.whenReady().then(() => {
   });
   registerShortcuts();
   setupIPC();
+  setupUpdateIPC();
+  setupAutoUpdater();
 
   // Ensure storage directory exists
   const fs = require('fs');

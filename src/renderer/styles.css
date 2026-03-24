@@ -831,7 +831,8 @@ html, body {
 
 .step-actions {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 4px;
   flex-shrink: 0;
 }
@@ -2557,6 +2558,87 @@ html, body {
 .deleted-recording-info {
   flex: 1;
   min-width: 0;
+}
+
+/* ============================================================
+   Feature: Auto-Update Banner & Progress
+   ============================================================ */
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: var(--vs-primary, #2563eb);
+  color: #fff;
+  padding: 8px 16px;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.update-banner.hidden {
+  display: none;
+}
+
+.update-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.update-banner-content span {
+  flex: 1;
+}
+
+.update-banner-btn {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 4px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.update-banner-btn:hover {
+  background: rgba(255,255,255,0.35);
+}
+
+.update-banner-dismiss {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.update-banner-dismiss:hover {
+  color: #fff;
+}
+
+.update-progress {
+  width: 120px;
+  height: 6px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.update-progress.hidden {
+  display: none;
+}
+
+.update-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: #fff;
+  border-radius: 3px;
+  transition: width 0.3s ease;
 }
 
 /* ============================================================

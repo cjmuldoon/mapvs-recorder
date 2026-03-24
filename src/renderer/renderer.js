@@ -65,6 +65,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupMonitorControls();
   setupSyncControls();
   setupSettingsControls();
+  setupAutoUpdate();
   setupKeyboardShortcuts();
   setupNotificationControls();
   setupDeleteRecordingControls();
@@ -782,6 +783,91 @@ async function uploadRecording() {
     document.getElementById('uploadProgressBar').style.width = '0%';
     document.getElementById('uploadBtn').disabled = false;
     showToast(`Upload failed: ${err.message}`, 'error');
+  }
+}
+
+// ============================================================
+// Auto-Update
+// ============================================================
+function setupAutoUpdate() {
+  const banner = document.getElementById('updateBanner');
+  const bannerText = document.getElementById('updateBannerText');
+  const progressContainer = document.getElementById('updateProgress');
+  const progressBar = document.getElementById('updateProgressBar');
+  const restartBtn = document.getElementById('updateRestartBtn');
+  const dismissBtn = document.getElementById('updateDismissBtn');
+  const checkBtn = document.getElementById('checkUpdateBtn');
+  const statusText = document.getElementById('updateStatusText');
+  const versionLabel = document.getElementById('appVersionLabel');
+
+  // Display current version
+  if (window.api.app) {
+    window.api.app.getVersion().then((version) => {
+      if (versionLabel) versionLabel.textContent = `ValueStream Recorder v${version}`;
+    });
+  }
+
+  // "Check for Updates" button in Settings
+  if (checkBtn) {
+    checkBtn.addEventListener('click', async () => {
+      checkBtn.disabled = true;
+      checkBtn.textContent = 'Checking...';
+      if (statusText) statusText.textContent = 'Checking for updates...';
+      try {
+        const result = await window.api.app.checkUpdate();
+        if (result.success && result.updateInfo) {
+          if (statusText) statusText.textContent = `Update v${result.updateInfo.version} available`;
+        } else {
+          if (statusText) statusText.textContent = 'Up to date';
+          showToast('You are running the latest version', 'success');
+        }
+      } catch (err) {
+        if (statusText) statusText.textContent = 'Update check failed';
+        showToast('Could not check for updates', 'error');
+      }
+      checkBtn.disabled = false;
+      checkBtn.textContent = 'Check for Updates';
+    });
+  }
+
+  // Restart button on banner
+  if (restartBtn) {
+    restartBtn.addEventListener('click', () => {
+      window.api.app.installUpdate();
+    });
+  }
+
+  // Dismiss banner
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => {
+      banner.classList.add('hidden');
+    });
+  }
+
+  // Listen for update events from main process
+  if (window.api.app) {
+    window.api.app.onUpdateAvailable((info) => {
+      banner.classList.remove('hidden');
+      bannerText.textContent = `Downloading update v${info.version}...`;
+      progressContainer.classList.remove('hidden');
+      restartBtn.classList.add('hidden');
+      if (statusText) statusText.textContent = `Downloading v${info.version}...`;
+    });
+
+    window.api.app.onDownloadProgress((progress) => {
+      const pct = Math.round(progress.percent);
+      progressBar.style.width = `${pct}%`;
+      bannerText.textContent = `Downloading update... ${pct}%`;
+    });
+
+    window.api.app.onUpdateDownloaded((info) => {
+      banner.classList.remove('hidden');
+      bannerText.textContent = `Update v${info.version} ready — restart to apply`;
+      progressContainer.classList.add('hidden');
+      restartBtn.classList.remove('hidden');
+      restartBtn.style.display = '';
+      if (statusText) statusText.textContent = `v${info.version} ready — restart to apply`;
+    });
   }
 }
 

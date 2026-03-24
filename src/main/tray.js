@@ -1,8 +1,11 @@
 const { Tray, Menu, nativeImage } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 
 let tray = null;
 let currentStatus = 'idle';
+let updateAvailable = false;
+let updateReady = false;
 
 function createTrayIcon(status) {
   // Create a simple colored circle as tray icon
@@ -35,7 +38,7 @@ function setupTray(showWindowCallback, stopRecordingCallback) {
 
   function updateMenu() {
     const isRecording = currentStatus === 'recording';
-    const contextMenu = Menu.buildFromTemplate([
+    const menuTemplate = [
       {
         label: 'ValueStream Recorder',
         enabled: false
@@ -57,6 +60,19 @@ function setupTray(showWindowCallback, stopRecordingCallback) {
       },
       { type: 'separator' },
       {
+        label: updateReady ? 'Restart to Update' : 'Check for Updates',
+        click: () => {
+          if (updateReady) {
+            autoUpdater.quitAndInstall(false, true);
+          } else {
+            autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+              console.error('Manual update check failed:', err.message);
+            });
+          }
+        }
+      },
+      { type: 'separator' },
+      {
         label: `Status: ${currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1)}`,
         enabled: false
       },
@@ -69,8 +85,9 @@ function setupTray(showWindowCallback, stopRecordingCallback) {
           app.quit();
         }
       }
-    ]);
+    ];
 
+    const contextMenu = Menu.buildFromTemplate(menuTemplate);
     tray.setContextMenu(contextMenu);
   }
 
@@ -88,6 +105,19 @@ function setupTray(showWindowCallback, stopRecordingCallback) {
       syncing: 'ValueStream Recorder - Syncing...'
     };
     tray.setToolTip(tooltips[status] || tooltips.idle);
+    updateMenu();
+  };
+
+  tray.setUpdateAvailable = (available) => {
+    updateAvailable = available;
+    updateMenu();
+  };
+
+  tray.setUpdateReady = (ready) => {
+    updateReady = ready;
+    if (ready) {
+      tray.setToolTip('ValueStream Recorder - Update ready, restart to apply');
+    }
     updateMenu();
   };
 

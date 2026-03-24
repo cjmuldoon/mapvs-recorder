@@ -8,6 +8,18 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Auto-update banner (hidden by default) -->
+  <div class="update-banner hidden" id="updateBanner">
+    <div class="update-banner-content">
+      <span id="updateBannerText">Update ready — restart to apply</span>
+      <div class="update-progress hidden" id="updateProgress">
+        <div class="update-progress-bar" id="updateProgressBar"></div>
+      </div>
+      <button class="btn btn-sm update-banner-btn" id="updateRestartBtn">Restart Now</button>
+      <button class="update-banner-dismiss" id="updateDismissBtn" title="Dismiss">&times;</button>
+    </div>
+  </div>
+
   <div class="titlebar-drag-region"></div>
 
   <div id="app">
@@ -681,6 +693,18 @@
             <div class="settings-row-desc mb-3">Soft-deleted recordings are kept for 30 days before automatic purge.</div>
             <div id="deletedRecordingsList" class="deleted-recordings-list">
               <div class="text-sm text-muted" style="text-align:center;padding:12px">No deleted recordings</div>
+            </div>
+          </div>
+
+          <!-- About / Updates -->
+          <div class="settings-section">
+            <div class="settings-section-title">About</div>
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <div class="settings-row-label" id="appVersionLabel">ValueStream Recorder v1.0.0</div>
+                <div class="settings-row-desc" id="updateStatusText">Up to date</div>
+              </div>
+              <button class="btn btn-sm" id="checkUpdateBtn">Check for Updates</button>
             </div>
           </div>
 
