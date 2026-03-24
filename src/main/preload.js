@@ -60,7 +60,8 @@ contextBridge.exposeInMainWorld('api', {
     getTemplates: () => ipcRenderer.invoke('sync:get-templates'),
     getNotificationCount: () => ipcRenderer.invoke('sync:get-notification-count'),
     getNotifications: () => ipcRenderer.invoke('sync:get-notifications'),
-    getStats: () => ipcRenderer.invoke('sync:get-stats')
+    getStats: () => ipcRenderer.invoke('sync:get-stats'),
+    getMapPresence: (mapId) => ipcRenderer.invoke('sync:get-map-presence', mapId)
   },
 
   // Settings

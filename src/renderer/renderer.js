@@ -657,6 +657,12 @@ function setupSyncControls() {
     const newMapGroup = document.getElementById('newMapNameGroup');
     newMapGroup.classList.toggle('hidden', value !== '_new');
     updateUploadButton();
+    // Fetch presence when a map is selected
+    if (value && value !== '' && value !== '_new') {
+      pollMapPresence(value);
+    } else {
+      clearMapPresence();
+    }
   });
 
   document.getElementById('newMapNameInput')?.addEventListener('input', updateUploadButton);
@@ -783,6 +789,44 @@ async function uploadRecording() {
     document.getElementById('uploadProgressBar').style.width = '0%';
     document.getElementById('uploadBtn').disabled = false;
     showToast(`Upload failed: ${err.message}`, 'error');
+  }
+}
+
+// ============================================================
+// Map Presence (Collaborative Editing #34)
+// ============================================================
+let _presencePollTimer = null;
+
+function pollMapPresence(mapId) {
+  clearMapPresence();
+  fetchPresence(mapId);
+  _presencePollTimer = setInterval(() => fetchPresence(mapId), 15000);
+}
+
+function clearMapPresence() {
+  if (_presencePollTimer) {
+    clearInterval(_presencePollTimer);
+    _presencePollTimer = null;
+  }
+  const el = document.getElementById('mapPresenceInfo');
+  if (el) el.classList.add('hidden');
+}
+
+async function fetchPresence(mapId) {
+  const el = document.getElementById('mapPresenceInfo');
+  if (!el || !state.connected) return;
+
+  try {
+    const result = await window.api.sync.getMapPresence(mapId);
+    if (result && result.active_users && result.active_users.length > 0) {
+      const names = result.active_users.map(u => u.user_name || 'Unknown').join(', ');
+      el.textContent = `${result.count} viewing: ${names}`;
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  } catch {
+    el.classList.add('hidden');
   }
 }
 

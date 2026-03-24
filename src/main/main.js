@@ -529,6 +529,19 @@ function setupIPC() {
     }
   });
 
+  ipcMain.handle('sync:get-map-presence', async (_event, mapId) => {
+    const token = store.get('token');
+    const apiUrl = store.get('api_url');
+    if (!token || !mapId) return { active_users: [], count: 0 };
+
+    try {
+      const api = require('../sync/api');
+      return await api.getMapPresence(token, apiUrl, mapId);
+    } catch (err) {
+      return { active_users: [], count: 0 };
+    }
+  });
+
   // Settings handlers
   ipcMain.handle('settings:get', async () => {
     return {

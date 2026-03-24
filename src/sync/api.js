@@ -277,6 +277,34 @@ async function getStats(token, apiUrl) {
   }
 }
 
+/**
+ * Get active presence (who's viewing/editing a map) from MapVS.com.
+ * @param {string} token - Bearer token
+ * @param {string} apiUrl - Base API URL
+ * @param {string} mapId - Map ID
+ * @returns {Promise<{ active_users: Array<{ user_id: number, user_name: string }>, count: number }>}
+ */
+async function getMapPresence(token, apiUrl, mapId) {
+  try {
+    const response = await fetch(`${apiUrl}/collab/${mapId}/presence`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    if (!response.ok) return { active_users: [], count: 0 };
+    const data = await response.json();
+    // Unwrap API v1 {status, data} wrapper
+    return data.data || data;
+  } catch (err) {
+    console.error('Failed to fetch map presence:', err.message);
+    return { active_users: [], count: 0 };
+  }
+}
+
 module.exports = {
   testConnection,
   getMaps,
@@ -285,5 +313,6 @@ module.exports = {
   getTemplates,
   getNotificationCount,
   getNotifications,
-  getStats
+  getStats,
+  getMapPresence
 };
