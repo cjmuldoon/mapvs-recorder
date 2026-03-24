@@ -361,6 +361,55 @@
             <div class="analytics-bar-chart mt-3" id="analyticsBarChart"></div>
           </div>
 
+          <!-- Quick Simulate Card -->
+          <div class="card hidden" id="quickSimulateCard">
+            <div class="flex items-center justify-between mb-3">
+              <div class="card-title">Quick Simulate</div>
+              <button class="btn btn-primary btn-sm" id="runQuickSimBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605"/></svg>
+                Run Simulation
+              </button>
+            </div>
+            <div class="text-xs text-muted mb-3">Monte Carlo simulation with random variation — runs locally, no server needed.</div>
+
+            <div class="hidden" id="simResultsPanel">
+              <div class="analytics-metrics" id="simMetrics">
+                <div class="analytics-metric">
+                  <div class="analytics-metric-label">Predicted Lead Time</div>
+                  <div class="analytics-metric-value font-mono" id="simLeadTime">--</div>
+                  <div class="text-xs text-muted" id="simLeadTimeRange">--</div>
+                </div>
+                <div class="analytics-metric highlight">
+                  <div class="analytics-metric-label">Predicted PCE</div>
+                  <div class="analytics-metric-value font-mono" id="simPCE">--</div>
+                  <div class="text-xs text-muted" id="simPCERange">--</div>
+                </div>
+                <div class="analytics-metric">
+                  <div class="analytics-metric-label">Bottleneck</div>
+                  <div class="analytics-metric-value font-mono text-sm" id="simBottleneck">--</div>
+                  <div class="text-xs text-muted" id="simBottleneckPct">--</div>
+                </div>
+                <div class="analytics-metric">
+                  <div class="analytics-metric-label">Est. WIP</div>
+                  <div class="analytics-metric-value font-mono" id="simWIP">--</div>
+                  <div class="text-xs text-muted" id="simWIPRange">--</div>
+                </div>
+              </div>
+              <div class="sim-confidence mt-3" id="simConfidence" style="background:var(--vs-surface-alt);border-radius:8px;padding:10px;border:1px solid var(--vs-border)">
+                <div class="text-xs" style="color:var(--vs-primary)">
+                  <strong>80% confident</strong> lead time between
+                  <span class="font-mono font-semibold" id="simConfP10">--</span> and
+                  <span class="font-mono font-semibold" id="simConfP90">--</span>
+                  <span class="text-muted ml-1" id="simRunCount">(100 runs)</span>
+                </div>
+              </div>
+              <div class="mt-3">
+                <div class="text-xs text-muted mb-2">Bottleneck Frequency</div>
+                <div id="simBottleneckChart"></div>
+              </div>
+            </div>
+          </div>
+
           <div class="card">
             <div class="flex items-center justify-between">
               <div>

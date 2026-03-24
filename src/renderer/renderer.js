@@ -69,6 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupKeyboardShortcuts();
   setupNotificationControls();
   setupDeleteRecordingControls();
+  setupQuickSimulate();
   await loadSettings();
   await loadRegionState();
   await loadDisplays();
@@ -433,6 +434,7 @@ function refreshReviewTab() {
   renderAnalyticsSummary();
   renderTimeline();
   renderReviewSteps();
+  updateQuickSimulateVisibility();
 }
 
 function renderReviewSteps() {
@@ -2089,6 +2091,86 @@ async function fetchQuickStats() {
     }
   } catch (err) {
     // Silently fail
+  }
+}
+
+// ============================================================
+// Quick Simulate
+// ============================================================
+function setupQuickSimulate() {
+  document.getElementById('runQuickSimBtn').addEventListener('click', runQuickSimulation);
+}
+
+function runQuickSimulation() {
+  if (!state.steps || state.steps.length === 0) return;
+
+  const card = document.getElementById('quickSimulateCard');
+  const panel = document.getElementById('simResultsPanel');
+
+  if (typeof window.simulateProcess !== 'function') {
+    showToast('Simulation engine not loaded', 'error');
+    return;
+  }
+
+  const result = window.simulateProcess(state.steps, {
+    numSimulations: 100,
+    variationPct: 15,
+  });
+
+  // Populate results
+  document.getElementById('simLeadTime').textContent = formatSeconds(result.leadTime.mean);
+  document.getElementById('simLeadTimeRange').textContent =
+    `P10: ${formatSeconds(result.leadTime.p10)} / P90: ${formatSeconds(result.leadTime.p90)}`;
+
+  document.getElementById('simPCE').textContent = result.pce.mean > 0 ? `${result.pce.mean}%` : '--';
+  document.getElementById('simPCERange').textContent =
+    `P10: ${result.pce.p10}% / P90: ${result.pce.p90}%`;
+
+  document.getElementById('simWIP').textContent = result.wip.mean;
+  document.getElementById('simWIPRange').textContent =
+    `P10: ${result.wip.p10} / P90: ${result.wip.p90}`;
+
+  document.getElementById('simConfP10').textContent = formatSeconds(result.leadTime.p10);
+  document.getElementById('simConfP90').textContent = formatSeconds(result.leadTime.p90);
+  document.getElementById('simRunCount').textContent = `(${result.runs} runs)`;
+
+  // Top bottleneck
+  const bnEntries = Object.entries(result.bottleneckFrequency);
+  if (bnEntries.length > 0) {
+    const topBn = bnEntries[0];
+    document.getElementById('simBottleneck').textContent = topBn[0];
+    document.getElementById('simBottleneckPct').textContent =
+      `Bottleneck in ${Math.round(topBn[1] / result.runs * 100)}% of runs`;
+  }
+
+  // Bottleneck frequency chart (CSS bars)
+  const chartContainer = document.getElementById('simBottleneckChart');
+  const maxBn = Math.max(...bnEntries.map(e => e[1]), 1);
+  chartContainer.innerHTML = bnEntries.map(([name, count]) => {
+    const pct = (count / result.runs) * 100;
+    const isTop = name === bnEntries[0][0];
+    return `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="width:120px;font-size:11px;color:var(--vs-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</span>
+        <div style="flex:1;height:6px;background:var(--vs-surface-alt);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;border-radius:3px;background:${isTop ? 'var(--vs-danger, #ef4444)' : 'var(--vs-primary)'}"></div>
+        </div>
+        <span style="width:36px;font-size:10px;font-family:monospace;color:var(--vs-text-muted);text-align:right">${Math.round(pct)}%</span>
+      </div>
+    `;
+  }).join('');
+
+  panel.classList.remove('hidden');
+  showToast('Simulation complete', 'success');
+}
+
+// Show/hide quick simulate card when review tab loads
+function updateQuickSimulateVisibility() {
+  const card = document.getElementById('quickSimulateCard');
+  if (state.steps && state.steps.length > 0) {
+    card.classList.remove('hidden');
+  } else {
+    card.classList.add('hidden');
   }
 }
 
