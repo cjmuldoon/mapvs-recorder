@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld('api', {
     stop: () => ipcRenderer.invoke('recording:stop'),
     addStep: (stepData) => ipcRenderer.invoke('recording:add-step', stepData),
     getStatus: () => ipcRenderer.invoke('recording:get-status'),
+    delete: (sessionPath) => ipcRenderer.invoke('recording:delete', sessionPath),
+    listDeleted: () => ipcRenderer.invoke('recording:list-deleted'),
+    restore: (deletedPath) => ipcRenderer.invoke('recording:restore', deletedPath),
+    permanentDelete: (deletedPath) => ipcRenderer.invoke('recording:permanent-delete', deletedPath),
     onStatusChanged: (callback) => ipcRenderer.on('recording:status-changed', (_e, status) => callback(status)),
     onNewStep: (callback) => ipcRenderer.on('shortcut:new-step', () => callback()),
     onStopShortcut: (callback) => ipcRenderer.on('shortcut:stop', () => callback())
@@ -53,7 +57,10 @@ contextBridge.exposeInMainWorld('api', {
     testConnection: () => ipcRenderer.invoke('sync:test-connection'),
     getMaps: () => ipcRenderer.invoke('sync:get-maps'),
     createMap: (data) => ipcRenderer.invoke('sync:create-map', data),
-    getTemplates: () => ipcRenderer.invoke('sync:get-templates')
+    getTemplates: () => ipcRenderer.invoke('sync:get-templates'),
+    getNotificationCount: () => ipcRenderer.invoke('sync:get-notification-count'),
+    getNotifications: () => ipcRenderer.invoke('sync:get-notifications'),
+    getStats: () => ipcRenderer.invoke('sync:get-stats')
   },
 
   // Settings

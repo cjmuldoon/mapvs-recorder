@@ -435,11 +435,11 @@ html, body {
   display: none;
   max-width: 800px;
   margin: 0 auto;
-  animation: fadeSlideIn 0.3s ease;
 }
 
 .tab-panel.active {
   display: block;
+  animation: tabFadeSlideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes fadeSlideIn {
@@ -2149,4 +2149,426 @@ html, body {
   border-color: var(--vs-border);
   background: var(--vs-surface);
   outline: none;
+}
+
+/* ============================================================
+   Feature: Analytics Summary
+   ============================================================ */
+.analytics-summary-card {
+  animation: fadeSlideIn 0.3s ease;
+}
+
+.analytics-metrics {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.analytics-metric {
+  flex: 1;
+  min-width: 100px;
+  padding: 12px 14px;
+  background: var(--vs-surface);
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius-md);
+  text-align: center;
+  transition: all var(--vs-transition);
+}
+
+.analytics-metric.highlight {
+  border-color: var(--vs-primary);
+  background: var(--vs-primary-50);
+}
+
+.analytics-metric.highlight .analytics-metric-value {
+  color: var(--vs-primary);
+}
+
+.analytics-metric.va {
+  border-color: var(--vs-va);
+  background: var(--vs-va-bg);
+}
+
+.analytics-metric.va .analytics-metric-value {
+  color: var(--vs-va);
+}
+
+.analytics-metric.nva {
+  border-color: var(--vs-nva);
+  background: var(--vs-nva-bg);
+}
+
+.analytics-metric.nva .analytics-metric-value {
+  color: var(--vs-nva);
+}
+
+.analytics-metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vs-text-muted);
+  margin-bottom: 4px;
+}
+
+.analytics-metric-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--vs-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-bottleneck {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--vs-warning-light);
+  border: 1px solid var(--vs-warning);
+  border-radius: var(--vs-radius);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.analytics-bottleneck-label {
+  font-weight: 700;
+  color: var(--vs-warning);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.analytics-bottleneck-value {
+  font-weight: 600;
+  color: var(--vs-text);
+}
+
+/* Analytics Bar Chart */
+.analytics-bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.analytics-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.analytics-bar-row.bottleneck .analytics-bar-label {
+  color: var(--vs-warning);
+  font-weight: 700;
+}
+
+.analytics-bar-row.bottleneck .analytics-bar-fill {
+  box-shadow: 0 0 6px rgba(217, 119, 6, 0.3);
+}
+
+.analytics-bar-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--vs-text-secondary);
+  width: 90px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-bar-track {
+  flex: 1;
+  height: 18px;
+  background: var(--vs-surface);
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius-sm);
+  overflow: hidden;
+}
+
+.analytics-bar-fill {
+  height: 100%;
+  border-radius: var(--vs-radius-sm);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.analytics-bar-fill.va {
+  background: linear-gradient(90deg, var(--vs-va), #047857);
+}
+
+.analytics-bar-fill.nva {
+  background: linear-gradient(90deg, var(--vs-nva), #B91C1C);
+}
+
+.analytics-bar-fill.undetermined {
+  background: linear-gradient(90deg, var(--vs-text-muted), #9CA3AF);
+}
+
+.analytics-bar-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vs-text-secondary);
+  width: 50px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   Feature: Process Change Flagging
+   ============================================================ */
+.flag-change-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius-pill);
+  background: var(--vs-surface);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--vs-text-muted);
+  cursor: pointer;
+  transition: all var(--vs-transition);
+}
+
+.flag-change-btn:hover {
+  border-color: var(--vs-warning);
+  color: var(--vs-warning);
+  background: var(--vs-warning-light);
+}
+
+.flag-change-btn.flagged {
+  border-color: var(--vs-warning);
+  background: var(--vs-warning-light);
+  color: var(--vs-warning);
+}
+
+.flag-change-btn .flag-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vs-text-muted);
+  transition: background var(--vs-transition);
+}
+
+.flag-change-btn.flagged .flag-dot {
+  background: var(--vs-warning);
+  box-shadow: 0 0 6px rgba(217, 119, 6, 0.4);
+}
+
+.change-flag-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.change-flag-type {
+  padding: 1px 6px;
+  border-radius: var(--vs-radius-pill);
+  background: var(--vs-warning-light);
+  color: var(--vs-warning);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.change-flag-note {
+  color: var(--vs-text-secondary);
+  font-style: italic;
+}
+
+/* Change Flag Dialog Overlay */
+.change-flag-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--vs-overlay);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.change-flag-dialog {
+  background: var(--vs-card);
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius-lg);
+  padding: 24px;
+  box-shadow: var(--vs-shadow-lg);
+  width: 360px;
+  max-width: 90vw;
+  animation: dialogSlideIn 0.2s ease;
+}
+
+@keyframes dialogSlideIn {
+  from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ============================================================
+   Feature: Notification Bell
+   ============================================================ */
+.notification-bell-wrapper {
+  position: relative;
+}
+
+.notification-bell {
+  position: relative;
+}
+
+.notification-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--vs-radius-pill);
+  background: var(--vs-danger);
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(220, 38, 38, 0.3);
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+.notification-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  max-height: 400px;
+  background: var(--vs-card);
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius-lg);
+  box-shadow: var(--vs-shadow-lg);
+  z-index: 1000;
+  overflow: hidden;
+  animation: fadeSlideIn 0.2s ease;
+}
+
+.notification-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--vs-border);
+  font-size: 14px;
+}
+
+.notification-list {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.notification-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--vs-border-subtle);
+  transition: background var(--vs-transition-fast);
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-item:hover {
+  background: var(--vs-hover-bg);
+}
+
+.notification-item.unread {
+  background: var(--vs-primary-50);
+  border-left: 3px solid var(--vs-primary);
+}
+
+.notification-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vs-text);
+  margin-bottom: 2px;
+}
+
+.notification-item-message {
+  font-size: 12px;
+  color: var(--vs-text-secondary);
+  line-height: 1.4;
+}
+
+.notification-item-time {
+  margin-top: 4px;
+}
+
+/* ============================================================
+   Feature: Quick Stats in Header
+   ============================================================ */
+.header-quick-stats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--vs-text-secondary);
+  padding: 4px 10px;
+  border-radius: var(--vs-radius-pill);
+  background: var(--vs-surface);
+  border: 1px solid var(--vs-border);
+  transition: all var(--vs-transition);
+}
+
+.header-quick-stats span {
+  font-weight: 700;
+  color: var(--vs-primary);
+}
+
+/* ============================================================
+   Feature: Deleted Recordings List
+   ============================================================ */
+.deleted-recordings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deleted-recording-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--vs-surface);
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius);
+  gap: 12px;
+  transition: all var(--vs-transition);
+}
+
+.deleted-recording-item:hover {
+  border-color: var(--vs-text-muted);
+  box-shadow: var(--vs-shadow);
+}
+
+.deleted-recording-info {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ============================================================
+   Feature: Smooth Tab Transitions
+   ============================================================ */
+@keyframes tabFadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

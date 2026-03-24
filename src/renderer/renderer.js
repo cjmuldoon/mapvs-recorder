@@ -38,7 +38,14 @@ const state = {
   templateStepIndex: 0,
   templateEnabled: false,
   // Photo attachments pending for next capture
-  pendingAttachments: []
+  pendingAttachments: [],
+  // Notification polling
+  notificationCount: 0,
+  notificationPollInterval: null,
+  notifications: [],
+  notificationPanelOpen: false,
+  // Quick stats
+  quickStats: { total_maps: 0 }
 };
 
 // ============================================================
@@ -59,6 +66,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupSyncControls();
   setupSettingsControls();
   setupKeyboardShortcuts();
+  setupNotificationControls();
+  setupDeleteRecordingControls();
   await loadSettings();
   await loadRegionState();
   await loadDisplays();
@@ -148,6 +157,7 @@ function switchTab(tabId) {
 
   if (tabId === 'review') refreshReviewTab();
   if (tabId === 'sync') refreshSyncTab();
+  if (tabId === 'settings') loadDeletedRecordings();
 }
 
 // ============================================================
@@ -419,6 +429,7 @@ function refreshReviewTab() {
   document.getElementById('reviewSummary').textContent =
     `${state.steps.length} steps captured \u2014 ${formatDuration(state.recording.startTime, state.recording.endTime)} total`;
 
+  renderAnalyticsSummary();
   renderTimeline();
   renderReviewSteps();
 }
@@ -487,6 +498,15 @@ function renderReviewSteps() {
           </button>
           ${step.auto_classified ? `<span class="auto-badge" title="Auto-classified based on ${step.duration_secs > 0 ? Math.round((step.idle_seconds || 0) / step.duration_secs * 100) : 0}% idle time">Auto</span>` : ''}
         </div>
+        <button class="flag-change-btn ${step.change_flag ? 'flagged' : ''}" data-index="${index}" data-action="flag-change" title="Flag process change">
+          <span class="flag-dot"></span>
+          Flag
+        </button>
+        ${step.change_flag ? `
+        <div class="change-flag-info">
+          <span class="change-flag-type">${escapeHtml(step.change_flag.type || '')}</span>
+          <span class="change-flag-note">${escapeHtml(step.change_flag.note || '')}</span>
+        </div>` : ''}
         <button class="icon-btn btn-sm" data-index="${index}" data-action="delete" title="Delete step"
           style="color:var(--vs-danger);width:28px;height:28px">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -546,6 +566,10 @@ function handleReviewClick(e) {
     renderReviewSteps();
     document.getElementById('reviewSummary').textContent = `${state.steps.length} steps captured`;
     showToast('Step removed', 'info');
+  }
+
+  if (action === 'flag-change') {
+    showChangeFlagDialog(index);
   }
 
   if (action === 'remove-attachment') {
@@ -664,7 +688,13 @@ function updateConnectionUI() {
 
   if (state.connected) {
     loadMaps();
+    startNotificationPolling();
+    fetchQuickStats();
     showToast('Connected to MapVS.com', 'success');
+  } else {
+    stopNotificationPolling();
+    document.getElementById('headerQuickStats').classList.add('hidden');
+    document.getElementById('notificationBadge').classList.add('hidden');
   }
 }
 
@@ -1581,6 +1611,355 @@ function updateTemplateStepPrompt() {
   promptEl.classList.remove('hidden');
   badgeEl.textContent = `Step ${state.templateStepIndex + 1}`;
   nameEl.textContent = currentStep.name;
+}
+
+// ============================================================
+// Feature: Analytics Summary
+// ============================================================
+function renderAnalyticsSummary() {
+  const card = document.getElementById('analyticsSummaryCard');
+  if (!state.steps || state.steps.length === 0) {
+    card.classList.add('hidden');
+    return;
+  }
+  card.classList.remove('hidden');
+
+  // Calculate metrics
+  const totalLeadTime = state.steps.reduce((sum, s) => sum + (s.duration_secs || 0), 0);
+  const totalCycleTime = state.steps.reduce((sum, s) => sum + (s.cycle_time || 0), 0);
+  const pce = totalLeadTime > 0 ? ((totalCycleTime / totalLeadTime) * 100) : 0;
+
+  let vaTime = 0, nvaTime = 0;
+  state.steps.forEach(s => {
+    const dur = s.duration_secs || 0;
+    if (s.va_type === 'va') vaTime += dur;
+    else if (s.va_type === 'nva') nvaTime += dur;
+  });
+
+  document.getElementById('analyticsLeadTime').textContent = formatSeconds(totalLeadTime);
+  document.getElementById('analyticsCycleTime').textContent = formatSeconds(totalCycleTime);
+  document.getElementById('analyticsPCE').textContent = pce > 0 ? `${pce.toFixed(1)}%` : '--';
+  document.getElementById('analyticsVATime').textContent = formatSeconds(vaTime);
+  document.getElementById('analyticsNVATime').textContent = formatSeconds(nvaTime);
+
+  // Find bottleneck (longest cycle time step)
+  let bottleneckStep = null;
+  let maxCycle = 0;
+  state.steps.forEach(s => {
+    const ct = s.cycle_time || s.duration_secs || 0;
+    if (ct > maxCycle) {
+      maxCycle = ct;
+      bottleneckStep = s;
+    }
+  });
+
+  const bottleneckEl = document.getElementById('analyticsBottleneck');
+  if (bottleneckStep && maxCycle > 0) {
+    bottleneckEl.classList.remove('hidden');
+    document.getElementById('analyticsBottleneckName').textContent =
+      `${bottleneckStep.stage_name || bottleneckStep.window_title || 'Unnamed'} (${formatSeconds(maxCycle)})`;
+  } else {
+    bottleneckEl.classList.add('hidden');
+  }
+
+  // Render bar chart (CSS bars for cycle time per step)
+  const chartContainer = document.getElementById('analyticsBarChart');
+  const maxBarValue = Math.max(...state.steps.map(s => s.cycle_time || s.duration_secs || 0), 1);
+
+  chartContainer.innerHTML = state.steps.map((step, idx) => {
+    const value = step.cycle_time || step.duration_secs || 0;
+    const pct = (value / maxBarValue) * 100;
+    const isBottleneck = step === bottleneckStep;
+    const vaClass = step.va_type || 'undetermined';
+    const label = step.stage_name || `Step ${idx + 1}`;
+
+    return `
+      <div class="analytics-bar-row ${isBottleneck ? 'bottleneck' : ''}">
+        <div class="analytics-bar-label" title="${escapeAttr(label)}">${escapeHtml(label)}</div>
+        <div class="analytics-bar-track">
+          <div class="analytics-bar-fill ${vaClass}" style="width:${Math.max(pct, 2)}%"></div>
+        </div>
+        <div class="analytics-bar-value font-mono">${value.toFixed(1)}s</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ============================================================
+// Feature: Process Change Flagging
+// ============================================================
+function showChangeFlagDialog(stepIndex) {
+  const step = state.steps[stepIndex];
+  const existing = step.change_flag || {};
+
+  // Create a modal overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'change-flag-overlay';
+  overlay.innerHTML = `
+    <div class="change-flag-dialog">
+      <div class="card-title mb-3">Flag Process Change</div>
+      <div class="form-group">
+        <label class="form-label">Change Type</label>
+        <select class="form-select" id="changeFlagType">
+          <option value="">Select type...</option>
+          <option value="added" ${existing.type === 'added' ? 'selected' : ''}>Step Added</option>
+          <option value="removed" ${existing.type === 'removed' ? 'selected' : ''}>Step Removed</option>
+          <option value="modified" ${existing.type === 'modified' ? 'selected' : ''}>Step Modified</option>
+          <option value="automated" ${existing.type === 'automated' ? 'selected' : ''}>Now Automated</option>
+          <option value="bottleneck" ${existing.type === 'bottleneck' ? 'selected' : ''}>Bottleneck Identified</option>
+          <option value="other" ${existing.type === 'other' ? 'selected' : ''}>Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Note</label>
+        <input type="text" class="form-input" id="changeFlagNote" placeholder="Describe the change..."
+          value="${escapeAttr(existing.note || '')}" />
+      </div>
+      <div class="flex gap-2 justify-between">
+        <button class="btn btn-ghost btn-sm" id="changeFlagRemove" ${!step.change_flag ? 'style="visibility:hidden"' : ''}>Remove Flag</button>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary btn-sm" id="changeFlagCancel">Cancel</button>
+          <button class="btn btn-primary btn-sm" id="changeFlagSave">Save</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#changeFlagCancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#changeFlagRemove').addEventListener('click', () => {
+    delete state.steps[stepIndex].change_flag;
+    if (state.recording) state.recording.steps = state.steps;
+    renderReviewSteps();
+    overlay.remove();
+    showToast('Flag removed', 'info');
+  });
+
+  overlay.querySelector('#changeFlagSave').addEventListener('click', () => {
+    const type = overlay.querySelector('#changeFlagType').value;
+    const note = overlay.querySelector('#changeFlagNote').value.trim();
+
+    if (!type) {
+      showToast('Please select a change type', 'error');
+      return;
+    }
+
+    state.steps[stepIndex].change_flag = { type, note, flagged_at: new Date().toISOString() };
+    if (state.recording) state.recording.steps = state.steps;
+    renderReviewSteps();
+    overlay.remove();
+    showToast('Change flagged', 'success');
+  });
+
+  // Close on overlay click
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+}
+
+// ============================================================
+// Feature: Soft Delete with Recovery
+// ============================================================
+function setupDeleteRecordingControls() {
+  document.getElementById('deleteRecordingBtn')?.addEventListener('click', deleteCurrentRecording);
+}
+
+async function deleteCurrentRecording() {
+  if (!state.recording) {
+    showToast('No recording to delete', 'error');
+    return;
+  }
+
+  if (!confirm('Move this recording to the deleted folder? You can restore it from Settings within 30 days.')) {
+    return;
+  }
+
+  try {
+    // If the recording has a file path, use soft delete via IPC
+    // Otherwise just clear from memory (it was never saved)
+    if (state.recording.sessionPath) {
+      const result = await window.api.recording.delete(state.recording.sessionPath);
+      if (!result.success) {
+        showToast(`Delete failed: ${result.error}`, 'error');
+        return;
+      }
+    }
+
+    state.recording = null;
+    state.steps = [];
+    refreshReviewTab();
+    showToast('Recording moved to deleted', 'success');
+  } catch (err) {
+    showToast('Failed to delete recording', 'error');
+    console.error('Delete recording error:', err);
+  }
+}
+
+async function loadDeletedRecordings() {
+  const container = document.getElementById('deletedRecordingsList');
+  if (!container) return;
+
+  try {
+    const result = await window.api.recording.listDeleted();
+    if (!result.success || !result.data || result.data.length === 0) {
+      container.innerHTML = '<div class="text-sm text-muted" style="text-align:center;padding:12px">No deleted recordings</div>';
+      return;
+    }
+
+    container.innerHTML = result.data.map(session => {
+      const deletedDate = session.deletedAt ? new Date(session.deletedAt).toLocaleDateString() : 'Unknown';
+      const daysLeft = session.deletedAt
+        ? Math.max(0, 30 - Math.floor((Date.now() - new Date(session.deletedAt).getTime()) / (1000 * 60 * 60 * 24)))
+        : '?';
+
+      return `
+        <div class="deleted-recording-item">
+          <div class="deleted-recording-info">
+            <div class="text-sm font-semibold">${escapeHtml(session.sessionId)}</div>
+            <div class="text-xs text-muted">${session.stepCount} steps | ${session.mode} | Deleted ${deletedDate} | ${daysLeft} days left</div>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-secondary btn-sm" data-action="restore" data-path="${escapeAttr(session.path)}">Restore</button>
+            <button class="btn btn-danger btn-sm" data-action="perm-delete" data-path="${escapeAttr(session.path)}">Delete Forever</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Event delegation
+    container.querySelectorAll('[data-action="restore"]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const p = btn.dataset.path;
+        const result = await window.api.recording.restore(p);
+        if (result.success) {
+          showToast('Recording restored', 'success');
+          loadDeletedRecordings();
+        } else {
+          showToast(`Restore failed: ${result.error}`, 'error');
+        }
+      });
+    });
+
+    container.querySelectorAll('[data-action="perm-delete"]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Permanently delete this recording? This cannot be undone.')) return;
+        const p = btn.dataset.path;
+        const result = await window.api.recording.permanentDelete(p);
+        if (result.success) {
+          showToast('Permanently deleted', 'info');
+          loadDeletedRecordings();
+        } else {
+          showToast(`Delete failed: ${result.error}`, 'error');
+        }
+      });
+    });
+  } catch (err) {
+    console.error('Failed to load deleted recordings:', err);
+    container.innerHTML = '<div class="text-sm text-muted" style="text-align:center;padding:12px">Error loading deleted recordings</div>';
+  }
+}
+
+// ============================================================
+// Feature: Notification Bell
+// ============================================================
+function setupNotificationControls() {
+  document.getElementById('notificationBellBtn')?.addEventListener('click', toggleNotificationPanel);
+  document.getElementById('closeNotificationsBtn')?.addEventListener('click', () => {
+    document.getElementById('notificationPanel').classList.add('hidden');
+    state.notificationPanelOpen = false;
+  });
+
+  // Close panel on outside click
+  document.addEventListener('click', (e) => {
+    if (state.notificationPanelOpen && !e.target.closest('.notification-bell-wrapper')) {
+      document.getElementById('notificationPanel').classList.add('hidden');
+      state.notificationPanelOpen = false;
+    }
+  });
+}
+
+function startNotificationPolling() {
+  stopNotificationPolling();
+  fetchNotificationCount();
+  state.notificationPollInterval = setInterval(fetchNotificationCount, 60000);
+}
+
+function stopNotificationPolling() {
+  if (state.notificationPollInterval) {
+    clearInterval(state.notificationPollInterval);
+    state.notificationPollInterval = null;
+  }
+}
+
+async function fetchNotificationCount() {
+  if (!state.connected) return;
+  try {
+    const result = await window.api.sync.getNotificationCount();
+    state.notificationCount = result.count || 0;
+    const badge = document.getElementById('notificationBadge');
+    if (state.notificationCount > 0) {
+      badge.textContent = state.notificationCount > 99 ? '99+' : state.notificationCount;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  } catch (err) {
+    // Silently fail
+  }
+}
+
+async function toggleNotificationPanel() {
+  const panel = document.getElementById('notificationPanel');
+  state.notificationPanelOpen = !state.notificationPanelOpen;
+  panel.classList.toggle('hidden', !state.notificationPanelOpen);
+
+  if (state.notificationPanelOpen) {
+    await loadNotifications();
+  }
+}
+
+async function loadNotifications() {
+  const listEl = document.getElementById('notificationList');
+  listEl.innerHTML = '<div class="text-sm text-muted" style="padding:20px;text-align:center">Loading...</div>';
+
+  try {
+    const result = await window.api.sync.getNotifications();
+    const notifications = result.data || [];
+
+    if (notifications.length === 0) {
+      listEl.innerHTML = '<div class="text-sm text-muted" style="padding:20px;text-align:center">No notifications</div>';
+      return;
+    }
+
+    listEl.innerHTML = notifications.slice(0, 20).map(n => `
+      <div class="notification-item ${n.read ? '' : 'unread'}">
+        <div class="notification-item-title">${escapeHtml(n.title || 'Notification')}</div>
+        <div class="notification-item-message">${escapeHtml(n.message || '')}</div>
+        <div class="notification-item-time text-xs text-muted">${n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div>
+      </div>
+    `).join('');
+  } catch (err) {
+    listEl.innerHTML = '<div class="text-sm text-muted" style="padding:20px;text-align:center">Failed to load notifications</div>';
+  }
+}
+
+// ============================================================
+// Feature: Quick Stats in Header
+// ============================================================
+async function fetchQuickStats() {
+  if (!state.connected) return;
+  try {
+    const result = await window.api.sync.getStats();
+    if (result.success && result.data) {
+      state.quickStats = result.data;
+      const statsEl = document.getElementById('headerQuickStats');
+      document.getElementById('headerMapCount').textContent = result.data.total_maps || 0;
+      statsEl.classList.remove('hidden');
+    }
+  } catch (err) {
+    // Silently fail
+  }
 }
 
 // ============================================================

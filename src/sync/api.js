@@ -197,10 +197,93 @@ async function getTemplates(token, apiUrl) {
   return data.templates || data || [];
 }
 
+/**
+ * Get unread notification count from MapVS.com.
+ * @param {string} token - Bearer token
+ * @param {string} apiUrl - Base API URL
+ * @returns {Promise<number>}
+ */
+async function getNotificationCount(token, apiUrl) {
+  try {
+    const response = await fetch(`${apiUrl}/notifications/count`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    if (!response.ok) return 0;
+    const data = await response.json();
+    return data.count || 0;
+  } catch (err) {
+    console.error('Failed to fetch notification count:', err.message);
+    return 0;
+  }
+}
+
+/**
+ * Get notifications list from MapVS.com.
+ * @param {string} token - Bearer token
+ * @param {string} apiUrl - Base API URL
+ * @returns {Promise<Array<{ id: string, title: string, message: string, read: boolean, created_at: string }>>}
+ */
+async function getNotifications(token, apiUrl) {
+  const response = await fetch(`${apiUrl}/notifications`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to fetch notifications: ${response.status} ${text}`);
+  }
+
+  const data = await response.json();
+  return data.notifications || data || [];
+}
+
+/**
+ * Get quick stats (total maps count) from MapVS.com.
+ * @param {string} token - Bearer token
+ * @param {string} apiUrl - Base API URL
+ * @returns {Promise<{ total_maps: number }>}
+ */
+async function getStats(token, apiUrl) {
+  try {
+    const response = await fetch(`${apiUrl}/stats`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    if (!response.ok) {
+      // Fallback: use maps count
+      const maps = await getMaps(token, apiUrl);
+      return { total_maps: Array.isArray(maps) ? maps.length : 0 };
+    }
+    const data = await response.json();
+    return data;
+  } catch (err) {
+    console.error('Failed to fetch stats:', err.message);
+    return { total_maps: 0 };
+  }
+}
+
 module.exports = {
   testConnection,
   getMaps,
   uploadRecording,
   createMapFromRecording,
-  getTemplates
+  getTemplates,
+  getNotificationCount,
+  getNotifications,
+  getStats
 };

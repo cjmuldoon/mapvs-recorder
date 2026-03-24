@@ -391,6 +391,143 @@ function setupIPC() {
     };
   });
 
+  // Recording soft-delete handlers
+  ipcMain.handle('recording:delete', async (_event, sessionPath) => {
+    try {
+      const storagePath = store.get('preferences.storage_path');
+      const deletedDir = path.join(storagePath, 'deleted');
+      if (!fs.existsSync(deletedDir)) {
+        fs.mkdirSync(deletedDir, { recursive: true });
+      }
+
+      // Read the session file to get metadata
+      const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+      sessionData._deleted_at = new Date().toISOString();
+
+      const filename = path.basename(sessionPath);
+      const destPath = path.join(deletedDir, filename);
+      fs.writeFileSync(destPath, JSON.stringify(sessionData, null, 2));
+      fs.unlinkSync(sessionPath);
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('recording:list-deleted', async () => {
+    try {
+      const storagePath = store.get('preferences.storage_path');
+      const deletedDir = path.join(storagePath, 'deleted');
+      if (!fs.existsSync(deletedDir)) return { success: true, data: [] };
+
+      const files = fs.readdirSync(deletedDir).filter(f => f.endsWith('.json'));
+      const sessions = [];
+      const now = Date.now();
+      const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+
+      for (const file of files) {
+        const filePath = path.join(deletedDir, file);
+        try {
+          const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+          const deletedAt = data._deleted_at ? new Date(data._deleted_at).getTime() : now;
+
+          // Auto-purge after 30 days
+          if (now - deletedAt > thirtyDays) {
+            fs.unlinkSync(filePath);
+            continue;
+          }
+
+          sessions.push({
+            path: filePath,
+            filename: file,
+            sessionId: data.sessionId || file,
+            deletedAt: data._deleted_at,
+            stepCount: data.steps ? data.steps.length : 0,
+            mode: data.mode || 'unknown'
+          });
+        } catch (e) {
+          // Skip corrupt files
+        }
+      }
+
+      return { success: true, data: sessions };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('recording:restore', async (_event, deletedPath) => {
+    try {
+      const storagePath = store.get('preferences.storage_path');
+      const sessionData = JSON.parse(fs.readFileSync(deletedPath, 'utf8'));
+      delete sessionData._deleted_at;
+
+      const filename = path.basename(deletedPath);
+      const destPath = path.join(storagePath, filename);
+      fs.writeFileSync(destPath, JSON.stringify(sessionData, null, 2));
+      fs.unlinkSync(deletedPath);
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('recording:permanent-delete', async (_event, deletedPath) => {
+    try {
+      if (fs.existsSync(deletedPath)) {
+        fs.unlinkSync(deletedPath);
+      }
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Notification handlers
+  ipcMain.handle('sync:get-notification-count', async () => {
+    const token = store.get('token');
+    const apiUrl = store.get('api_url');
+    if (!token) return { success: false, count: 0 };
+
+    try {
+      const api = require('../sync/api');
+      const count = await api.getNotificationCount(token, apiUrl);
+      return { success: true, count };
+    } catch (err) {
+      return { success: false, count: 0 };
+    }
+  });
+
+  ipcMain.handle('sync:get-notifications', async () => {
+    const token = store.get('token');
+    const apiUrl = store.get('api_url');
+    if (!token) return { success: false, data: [] };
+
+    try {
+      const api = require('../sync/api');
+      const notifications = await api.getNotifications(token, apiUrl);
+      return { success: true, data: notifications };
+    } catch (err) {
+      return { success: false, data: [], error: err.message };
+    }
+  });
+
+  ipcMain.handle('sync:get-stats', async () => {
+    const token = store.get('token');
+    const apiUrl = store.get('api_url');
+    if (!token) return { success: false, data: {} };
+
+    try {
+      const api = require('../sync/api');
+      const stats = await api.getStats(token, apiUrl);
+      return { success: true, data: stats };
+    } catch (err) {
+      return { success: false, data: {}, error: err.message };
+    }
+  });
+
   // Settings handlers
   ipcMain.handle('settings:get', async () => {
     return {
