@@ -696,6 +696,21 @@
             </div>
           </div>
 
+          <!-- Recording Defaults -->
+          <div class="settings-section">
+            <div class="settings-section-title">Recording Defaults</div>
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <div class="settings-row-label">Default Recording Mode</div>
+                <div class="settings-row-desc">Start new recordings in manual or timer mode</div>
+              </div>
+              <select class="form-select" id="settingsRecordingMode" style="width:auto">
+                <option value="manual" selected>Manual</option>
+                <option value="timer">Timer</option>
+              </select>
+            </div>
+          </div>
+
           <!-- Appearance -->
           <div class="settings-section">
             <div class="settings-section-title">Appearance</div>
@@ -708,6 +723,37 @@
                 <option value="light">Light</option>
                 <option value="soft" selected>Soft</option>
                 <option value="dark">Dark</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <div class="settings-row-label">Compact Mode</div>
+                <div class="settings-row-desc">Reduce spacing for a denser layout</div>
+              </div>
+              <button class="form-toggle" id="settingsCompactMode"></button>
+            </div>
+          </div>
+
+          <!-- Sync -->
+          <div class="settings-section">
+            <div class="settings-section-title">Sync</div>
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <div class="settings-row-label">Auto-sync</div>
+                <div class="settings-row-desc">Automatically sync recordings to MapVS.com</div>
+              </div>
+              <button class="form-toggle active" id="settingsAutoSync"></button>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <div class="settings-row-label">Sync Frequency</div>
+                <div class="settings-row-desc">How often to sync when auto-sync is on</div>
+              </div>
+              <select class="form-select" id="settingsSyncFrequency" style="width:auto">
+                <option value="300000">Every 5 min</option>
+                <option value="900000">Every 15 min</option>
+                <option value="1800000">Every 30 min</option>
+                <option value="0">Manual only</option>
               </select>
             </div>
           </div>

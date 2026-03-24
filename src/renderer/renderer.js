@@ -925,6 +925,14 @@ function setupSettingsControls() {
     this.classList.toggle('active');
   });
 
+  document.getElementById('settingsCompactMode')?.addEventListener('click', function() {
+    this.classList.toggle('active');
+  });
+
+  document.getElementById('settingsAutoSync')?.addEventListener('click', function() {
+    this.classList.toggle('active');
+  });
+
   document.getElementById('settingsTheme')?.addEventListener('change', function() {
     setTheme(this.value);
   });
@@ -968,6 +976,30 @@ function applySettingsToUI(settings) {
     if (settings.preferences.theme) {
       setTheme(settings.preferences.theme, false);
     }
+
+    // Recording mode
+    const recordingModeEl = document.getElementById('settingsRecordingMode');
+    if (recordingModeEl && settings.preferences.recording_mode) {
+      recordingModeEl.value = settings.preferences.recording_mode;
+    }
+
+    // Compact mode
+    const compactBtn = document.getElementById('settingsCompactMode');
+    if (compactBtn) {
+      compactBtn.classList.toggle('active', !!settings.preferences.compact_mode);
+    }
+
+    // Auto-sync
+    const autoSyncBtn = document.getElementById('settingsAutoSync');
+    if (autoSyncBtn) {
+      autoSyncBtn.classList.toggle('active', settings.preferences.auto_sync !== false);
+    }
+
+    // Sync frequency
+    const syncFreqEl = document.getElementById('settingsSyncFrequency');
+    if (syncFreqEl && settings.preferences.sync_frequency !== undefined) {
+      syncFreqEl.value = settings.preferences.sync_frequency;
+    }
   }
 }
 
@@ -978,7 +1010,11 @@ async function saveSettings() {
       screenshot_interval: parseInt(document.getElementById('settingsInterval').value),
       screenshot_quality: document.getElementById('settingsQuality').value,
       auto_capture_on_window_change: document.getElementById('settingsAutoCapture').classList.contains('active'),
-      theme: state.theme
+      theme: state.theme,
+      recording_mode: document.getElementById('settingsRecordingMode')?.value || 'manual',
+      compact_mode: document.getElementById('settingsCompactMode')?.classList.contains('active') || false,
+      auto_sync: document.getElementById('settingsAutoSync')?.classList.contains('active') !== false,
+      sync_frequency: parseInt(document.getElementById('settingsSyncFrequency')?.value || '300000'),
     }
   };
 
