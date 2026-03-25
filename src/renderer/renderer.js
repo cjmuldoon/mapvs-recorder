@@ -2091,6 +2091,10 @@ async function toggleNotificationPanel() {
   }
 }
 
+// Live recording smooth timer state
+let _liveRecBase = { secs: 0, ts: Date.now(), active: false, visible: false };
+let _liveRecTickInterval = null;
+
 async function pollLiveRecording() {
   if (!state.connected) return;
   try {
@@ -2099,22 +2103,43 @@ async function pollLiveRecording() {
     if (!banner) return;
     if (result && result.active && result.source_device !== 'desktop') {
       const device = { watch: 'Apple Watch', mobile: 'Mobile App' }[result.source_device] || 'another device';
-      const mins = Math.floor((result.elapsed_secs || 0) / 60);
-      const secs = Math.floor((result.elapsed_secs || 0) % 60);
       const paused = result.status === 'paused';
-      banner.innerHTML = `<div class="live-recording-alert ${paused ? 'paused' : ''}">
-        <span class="pulse-dot"></span>
-        <span class="live-text"><strong>${paused ? 'Paused' : 'Recording'}</strong> — ${result.map_name || 'Untitled'} on ${device}</span>
-        <span class="live-timer">${mins}:${String(secs).padStart(2, '0')}</span>
-        <span class="live-step">Step ${result.current_step || 0}/${result.total_steps || '?'}</span>
-      </div>`;
-      banner.classList.remove('hidden');
+      _liveRecBase = { secs: result.elapsed_secs || 0, ts: Date.now(), active: !paused, step: result.current_step || 0, total: result.total_steps || '?' };
+      if (!_liveRecBase.visible) {
+        banner.innerHTML = `<div class="live-recording-alert ${paused ? 'paused' : ''}">
+          <span class="pulse-dot"></span>
+          <span class="live-text"><strong>${paused ? 'Paused' : 'Recording'}</strong> — ${result.map_name || 'Untitled'} on ${device}</span>
+          <span class="live-timer" id="liveRecTimer"></span>
+          <span class="live-step" id="liveRecStep">Step ${_liveRecBase.step}/${_liveRecBase.total}</span>
+        </div>`;
+        banner.classList.remove('hidden');
+        _liveRecBase.visible = true;
+        if (!_liveRecTickInterval) {
+          _liveRecTickInterval = setInterval(_tickLiveRec, 1000);
+        }
+      }
+      // Update step count on each poll
+      const stepEl = document.getElementById('liveRecStep');
+      if (stepEl) stepEl.textContent = `Step ${_liveRecBase.step}/${_liveRecBase.total}`;
+      _tickLiveRec();
     } else {
       banner.classList.add('hidden');
+      _liveRecBase.visible = false;
+      if (_liveRecTickInterval) { clearInterval(_liveRecTickInterval); _liveRecTickInterval = null; }
     }
   } catch {
     // Ignore polling errors
   }
+}
+
+function _tickLiveRec() {
+  const el = document.getElementById('liveRecTimer');
+  if (!el) return;
+  const b = _liveRecBase;
+  const secs = b.active ? b.secs + (Date.now() - b.ts) / 1000 : b.secs;
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  el.textContent = m + ':' + String(s).padStart(2, '0');
 }
 
 async function loadNotifications() {
