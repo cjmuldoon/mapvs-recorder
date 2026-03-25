@@ -2050,7 +2050,11 @@ function setupNotificationControls() {
 function startNotificationPolling() {
   stopNotificationPolling();
   fetchNotificationCount();
-  state.notificationPollInterval = setInterval(fetchNotificationCount, 60000);
+  pollLiveRecording();
+  state.notificationPollInterval = setInterval(() => {
+    fetchNotificationCount();
+    pollLiveRecording();
+  }, 10000);
 }
 
 function stopNotificationPolling() {
@@ -2084,6 +2088,32 @@ async function toggleNotificationPanel() {
 
   if (state.notificationPanelOpen) {
     await loadNotifications();
+  }
+}
+
+async function pollLiveRecording() {
+  if (!state.connected) return;
+  try {
+    const result = await window.api.sync.request('/live-recording/active');
+    const banner = document.getElementById('liveRecordingBanner');
+    if (!banner) return;
+    if (result && result.active && result.source_device !== 'desktop') {
+      const device = { watch: 'Apple Watch', mobile: 'Mobile App' }[result.source_device] || 'another device';
+      const mins = Math.floor((result.elapsed_secs || 0) / 60);
+      const secs = Math.floor((result.elapsed_secs || 0) % 60);
+      const paused = result.status === 'paused';
+      banner.innerHTML = `<div class="live-recording-alert ${paused ? 'paused' : ''}">
+        <span class="pulse-dot"></span>
+        <span class="live-text"><strong>${paused ? 'Paused' : 'Recording'}</strong> — ${result.map_name || 'Untitled'} on ${device}</span>
+        <span class="live-timer">${mins}:${String(secs).padStart(2, '0')}</span>
+        <span class="live-step">Step ${result.current_step || 0}/${result.total_steps || '?'}</span>
+      </div>`;
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+  } catch {
+    // Ignore polling errors
   }
 }
 

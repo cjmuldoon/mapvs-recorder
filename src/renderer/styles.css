@@ -2654,3 +2654,20 @@ html, body {
     transform: translateY(0);
   }
 }
+
+/* Live Recording Banner */
+.live-recording-alert {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; margin: 8px 12px;
+  border-radius: 10px; border: 1px solid #FCA5A5;
+  background: #FEF2F2; cursor: default;
+}
+.live-recording-alert.paused { border-color: #FDE68A; background: #FFFBEB; }
+[data-theme="dark"] .live-recording-alert { background: #1C1111; border-color: #7F1D1D; }
+[data-theme="dark"] .live-recording-alert.paused { background: #1C1A08; border-color: #78350F; }
+.pulse-dot { width: 10px; height: 10px; border-radius: 50%; background: #EF4444; animation: rec-pulse 1.5s ease-in-out infinite; flex-shrink: 0; }
+.live-recording-alert.paused .pulse-dot { background: #EAB308; }
+.live-text { flex: 1; font-size: 13px; }
+.live-timer { font-size: 18px; font-weight: 800; font-family: monospace; color: #DC2626; }
+.live-recording-alert.paused .live-timer { color: #CA8A04; }
+.live-step { font-size: 11px; color: #9CA3AF; }
