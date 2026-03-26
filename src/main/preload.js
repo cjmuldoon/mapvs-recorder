@@ -61,7 +61,9 @@ contextBridge.exposeInMainWorld('api', {
     getNotificationCount: () => ipcRenderer.invoke('sync:get-notification-count'),
     getNotifications: () => ipcRenderer.invoke('sync:get-notifications'),
     getStats: () => ipcRenderer.invoke('sync:get-stats'),
-    getMapPresence: (mapId) => ipcRenderer.invoke('sync:get-map-presence', mapId)
+    getMapPresence: (mapId) => ipcRenderer.invoke('sync:get-map-presence', mapId),
+    request: (apiPath) => ipcRenderer.invoke('sync:request', apiPath),
+    getMapRuns: (mapId) => ipcRenderer.invoke('sync:get-map-runs', mapId)
   },
 
   // Settings

@@ -305,6 +305,60 @@ async function getMapPresence(token, apiUrl, mapId) {
   }
 }
 
+/**
+ * Generic authenticated GET request to any API path.
+ * @param {string} token - Bearer token
+ * @param {string} apiUrl - Base API URL
+ * @param {string} apiPath - Path to append (e.g. '/live-recording/active')
+ * @returns {Promise<object>}
+ */
+async function apiRequest(token, apiUrl, apiPath) {
+  const url = `${apiUrl}${apiPath}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    },
+    timeout: 10000
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`API request failed: ${response.status} ${text}`);
+  }
+
+  const data = await response.json();
+  // Unwrap API v1 {status, data} wrapper if present
+  return data.data !== undefined ? data.data : data;
+}
+
+/**
+ * Get runs for a specific map.
+ * @param {string} token - Bearer token
+ * @param {string} apiUrl - Base API URL
+ * @param {string} mapId - Map ID
+ * @returns {Promise<Array>}
+ */
+async function getMapRuns(token, apiUrl, mapId) {
+  const response = await fetch(`${apiUrl}/maps/${mapId}/runs`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    },
+    timeout: 10000
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to fetch runs: ${response.status} ${text}`);
+  }
+
+  const data = await response.json();
+  return data.runs || data.data || data || [];
+}
+
 module.exports = {
   testConnection,
   getMaps,
@@ -314,5 +368,7 @@ module.exports = {
   getNotificationCount,
   getNotifications,
   getStats,
-  getMapPresence
+  getMapPresence,
+  apiRequest,
+  getMapRuns
 };

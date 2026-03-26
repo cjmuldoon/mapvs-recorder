@@ -529,6 +529,36 @@ function setupIPC() {
     }
   });
 
+  // Generic API request handler
+  ipcMain.handle('sync:request', async (_event, apiPath) => {
+    const token = store.get('token');
+    const apiUrl = store.get('api_url');
+    if (!token) return { success: false, error: 'Not authenticated' };
+
+    try {
+      const api = require('../sync/api');
+      const data = await api.apiRequest(token, apiUrl, apiPath);
+      return data;
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Get runs for a map
+  ipcMain.handle('sync:get-map-runs', async (_event, mapId) => {
+    const token = store.get('token');
+    const apiUrl = store.get('api_url');
+    if (!token) return { success: false, error: 'No token configured' };
+
+    try {
+      const api = require('../sync/api');
+      const runs = await api.getMapRuns(token, apiUrl, mapId);
+      return { success: true, data: runs };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
   ipcMain.handle('sync:get-map-presence', async (_event, mapId) => {
     const token = store.get('token');
     const apiUrl = store.get('api_url');

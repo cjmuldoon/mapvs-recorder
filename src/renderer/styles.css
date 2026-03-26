@@ -2671,3 +2671,68 @@ html, body {
 .live-timer { font-size: 18px; font-weight: 800; font-family: monospace; color: #DC2626; }
 .live-recording-alert.paused .live-timer { color: #CA8A04; }
 .live-step { font-size: 11px; color: #9CA3AF; }
+
+/* ============================================================
+   Run History Panel
+   ============================================================ */
+.run-history-item {
+  padding: 10px 12px;
+  border: 1px solid var(--vs-border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.run-history-item:hover {
+  background: var(--vs-surface-alt, rgba(0,0,0,0.02));
+  border-color: var(--vs-primary-light, #a5b4fc);
+}
+.run-history-item.selected {
+  border-color: var(--vs-primary);
+  background: rgba(99, 102, 241, 0.06);
+}
+.run-history-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.run-number-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--vs-primary);
+}
+.run-status-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.run-status-badge.run-completed {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+.run-status-badge.run-active {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+.run-status-badge.run-draft {
+  background: rgba(100, 116, 139, 0.12);
+  color: #64748b;
+}
+[data-theme="dark"] .run-status-badge.run-completed { background: rgba(34, 197, 94, 0.18); color: #4ade80; }
+[data-theme="dark"] .run-status-badge.run-active { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+[data-theme="dark"] .run-status-badge.run-draft { background: rgba(100, 116, 139, 0.18); color: #94a3b8; }
+
+.run-history-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--vs-text-secondary);
+}
+.run-detail strong {
+  color: var(--vs-text-primary);
+}

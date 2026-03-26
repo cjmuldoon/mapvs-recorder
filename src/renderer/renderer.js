@@ -45,7 +45,12 @@ const state = {
   notifications: [],
   notificationPanelOpen: false,
   // Quick stats
-  quickStats: { total_maps: 0 }
+  quickStats: { total_maps: 0 },
+  // Runs history
+  runsHistory: [],
+  selectedRunMapId: null,
+  // Auto-sync
+  autoSyncInterval: null
 };
 
 // ============================================================
@@ -70,6 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupNotificationControls();
   setupDeleteRecordingControls();
   setupQuickSimulate();
+  setupRunHistoryControls();
   await loadSettings();
   await loadRegionState();
   await loadDisplays();
@@ -256,6 +262,7 @@ async function stopRecording() {
       stopStepPolling();
       updateRecordingUI();
       showToast(`Captured ${state.steps.length} steps`, 'success');
+      onRecordingComplete();
       switchTab('review');
     }
   } catch (err) {
@@ -435,6 +442,32 @@ function refreshReviewTab() {
   renderTimeline();
   renderReviewSteps();
   updateQuickSimulateVisibility();
+
+  // Load run history if connected and a map is selected
+  if (state.connected) {
+    refreshRunHistoryPanel();
+  }
+}
+
+function refreshRunHistoryPanel() {
+  const panel = document.getElementById('runHistoryPanel');
+  if (!panel) return;
+
+  if (!state.connected) {
+    panel.classList.add('hidden');
+    return;
+  }
+
+  panel.classList.remove('hidden');
+
+  // Populate map selector for run history
+  const selector = document.getElementById('runHistoryMapSelector');
+  if (selector && state.maps.length > 0) {
+    const currentVal = selector.value;
+    selector.innerHTML = `<option value="">Select a map...</option>` +
+      state.maps.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+    if (currentVal) selector.value = currentVal;
+  }
 }
 
 function renderReviewSteps() {
@@ -698,10 +731,12 @@ function updateConnectionUI() {
   if (state.connected) {
     loadMaps();
     startNotificationPolling();
+    startAutoSync();
     fetchQuickStats();
     showToast('Connected to MapVS.com', 'success');
   } else {
     stopNotificationPolling();
+    stopAutoSync();
     document.getElementById('headerQuickStats').classList.add('hidden');
     document.getElementById('notificationBadge').classList.add('hidden');
   }
@@ -774,13 +809,17 @@ async function uploadRecording() {
       document.getElementById('uploadProgressLabel').textContent = 'Complete';
 
       const mapResultId = result.data?.map_id || mapId;
+      const runNumber = result.data?.run_number || result.data?.run_id;
       const apiUrl = state.settings.api_url.replace('/api/v1', '');
       document.getElementById('viewMapLink').href = `${apiUrl}/maps/${mapResultId}`;
 
       setTimeout(() => {
         document.getElementById('uploadProgress').classList.add('hidden');
         document.getElementById('uploadSuccess').classList.remove('hidden');
-        showToast('Upload complete!', 'success');
+        const toastMsg = runNumber
+          ? `Uploaded as Run #${runNumber}`
+          : 'Upload complete!';
+        showToast(toastMsg, 'success');
       }, 500);
     } else {
       throw new Error(result.error || 'Upload failed');
@@ -931,6 +970,11 @@ function setupSettingsControls() {
 
   document.getElementById('settingsAutoSync')?.addEventListener('click', function() {
     this.classList.toggle('active');
+    if (this.classList.contains('active')) {
+      startAutoSync();
+    } else {
+      stopAutoSync();
+    }
   });
 
   document.getElementById('settingsTheme')?.addEventListener('change', function() {
@@ -2263,6 +2307,272 @@ function updateQuickSimulateVisibility() {
   } else {
     card.classList.add('hidden');
   }
+}
+
+// ============================================================
+// Feature: Run History in Review Tab
+// ============================================================
+function setupRunHistoryControls() {
+  const selector = document.getElementById('runHistoryMapSelector');
+  if (selector) {
+    selector.addEventListener('change', (e) => {
+      const mapId = e.target.value;
+      if (mapId) {
+        loadRunHistory(mapId);
+      } else {
+        document.getElementById('runHistoryList').innerHTML =
+          '<div class="text-sm text-muted" style="padding:12px;text-align:center">Select a map to view runs</div>';
+        document.getElementById('runStageDetails')?.classList.add('hidden');
+        document.getElementById('trendChartContainer')?.classList.add('hidden');
+        state.runsHistory = [];
+      }
+    });
+  }
+}
+async function loadRunHistory(mapId) {
+  if (!state.connected || !mapId) return;
+  state.selectedRunMapId = mapId;
+
+  const container = document.getElementById('runHistoryList');
+  if (!container) return;
+
+  container.innerHTML = '<div class="text-sm text-muted" style="padding:12px;text-align:center">Loading runs...</div>';
+
+  try {
+    const result = await window.api.sync.getMapRuns(mapId);
+    if (result.success && Array.isArray(result.data)) {
+      state.runsHistory = result.data;
+      renderRunHistory();
+      renderTrendChart();
+    } else {
+      container.innerHTML = '<div class="text-sm text-muted" style="padding:12px;text-align:center">No runs found</div>';
+      state.runsHistory = [];
+    }
+  } catch (err) {
+    container.innerHTML = '<div class="text-sm text-muted" style="padding:12px;text-align:center">Failed to load runs</div>';
+    console.error('Failed to load run history:', err);
+  }
+}
+
+function renderRunHistory() {
+  const container = document.getElementById('runHistoryList');
+  if (!container) return;
+
+  if (!state.runsHistory || state.runsHistory.length === 0) {
+    container.innerHTML = '<div class="text-sm text-muted" style="padding:12px;text-align:center">No runs recorded yet</div>';
+    return;
+  }
+
+  container.innerHTML = state.runsHistory.map(run => {
+    const date = run.created_at ? new Date(run.created_at).toLocaleDateString() : '--';
+    const time = run.created_at ? new Date(run.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const statusClass = run.status === 'completed' ? 'run-completed' : run.status === 'in_progress' ? 'run-active' : 'run-draft';
+    const statusLabel = run.status === 'completed' ? 'Completed' : run.status === 'in_progress' ? 'In Progress' : run.status || 'Draft';
+    const pce = run.pce !== undefined && run.pce !== null ? `${Number(run.pce).toFixed(1)}%` : '--';
+    const leadTime = run.lead_time_secs ? formatSeconds(run.lead_time_secs) : '--';
+
+    return `
+      <div class="run-history-item" data-run-id="${run.id || ''}" data-run-number="${run.run_number || ''}">
+        <div class="run-history-header">
+          <span class="run-number-badge">Run #${run.run_number || '?'}</span>
+          <span class="run-status-badge ${statusClass}">${statusLabel}</span>
+        </div>
+        <div class="run-history-details">
+          <span class="run-detail"><strong>Date:</strong> ${date} ${time}</span>
+          <span class="run-detail"><strong>Lead:</strong> ${leadTime}</span>
+          <span class="run-detail"><strong>PCE:</strong> ${pce}</span>
+          ${run.stages_count ? `<span class="run-detail"><strong>Stages:</strong> ${run.stages_count}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Click handler to load run stage details
+  container.querySelectorAll('.run-history-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const runId = item.dataset.runId;
+      if (runId) loadRunDetails(runId);
+      // Highlight selected
+      container.querySelectorAll('.run-history-item').forEach(i => i.classList.remove('selected'));
+      item.classList.add('selected');
+    });
+  });
+}
+
+async function loadRunDetails(runId) {
+  if (!state.connected || !state.selectedRunMapId) return;
+
+  try {
+    const result = await window.api.sync.request(`/maps/${state.selectedRunMapId}/runs/${runId}`);
+    if (result && result.stages) {
+      renderRunStageDetails(result);
+    }
+  } catch (err) {
+    console.error('Failed to load run details:', err);
+  }
+}
+
+function renderRunStageDetails(run) {
+  const container = document.getElementById('runStageDetails');
+  if (!container) return;
+
+  const stages = run.stages || [];
+  if (stages.length === 0) {
+    container.innerHTML = '<div class="text-sm text-muted" style="padding:8px;text-align:center">No stage data</div>';
+    container.classList.remove('hidden');
+    return;
+  }
+
+  const maxDuration = Math.max(...stages.map(s => s.duration_secs || s.cycle_time || 0), 1);
+
+  container.innerHTML = `
+    <div class="text-xs text-muted font-semibold mb-2" style="text-transform:uppercase;letter-spacing:0.5px">
+      Run #${run.run_number || '?'} Stage Timing
+    </div>
+    ${stages.map(stage => {
+      const value = stage.duration_secs || stage.cycle_time || 0;
+      const pct = (value / maxDuration) * 100;
+      const vaClass = stage.va_type || 'undetermined';
+      return `
+        <div class="analytics-bar-row">
+          <div class="analytics-bar-label" title="${escapeAttr(stage.stage_name || stage.name || '')}">${escapeHtml(stage.stage_name || stage.name || 'Unnamed')}</div>
+          <div class="analytics-bar-track">
+            <div class="analytics-bar-fill ${vaClass}" style="width:${Math.max(pct, 2)}%"></div>
+          </div>
+          <div class="analytics-bar-value font-mono">${value.toFixed(1)}s</div>
+        </div>
+      `;
+    }).join('')}
+  `;
+  container.classList.remove('hidden');
+}
+
+// ============================================================
+// Feature: Lead Time Trend Chart
+// ============================================================
+function renderTrendChart() {
+  const container = document.getElementById('trendChartContainer');
+  if (!container) return;
+
+  if (!state.runsHistory || state.runsHistory.length < 2) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  container.classList.remove('hidden');
+
+  // Filter to runs with lead time data
+  const runsWithData = state.runsHistory
+    .filter(r => r.lead_time_secs && r.lead_time_secs > 0)
+    .sort((a, b) => (a.run_number || 0) - (b.run_number || 0));
+
+  if (runsWithData.length < 2) {
+    container.innerHTML = '<div class="card"><div class="card-title mb-3">Lead Time Trend</div><div class="text-sm text-muted">Need at least 2 runs with timing data for trends.</div></div>';
+    return;
+  }
+
+  const maxLead = Math.max(...runsWithData.map(r => r.lead_time_secs));
+  const minLead = Math.min(...runsWithData.map(r => r.lead_time_secs));
+  const avgLead = runsWithData.reduce((s, r) => s + r.lead_time_secs, 0) / runsWithData.length;
+  const barMaxHeight = 80; // px
+
+  // Determine trend direction
+  const first = runsWithData[0].lead_time_secs;
+  const last = runsWithData[runsWithData.length - 1].lead_time_secs;
+  const trendPct = first > 0 ? ((last - first) / first * 100) : 0;
+  const trendDir = trendPct < -2 ? 'improving' : trendPct > 2 ? 'regressing' : 'stable';
+  const trendLabel = trendDir === 'improving'
+    ? `Improving (${Math.abs(trendPct).toFixed(0)}% faster)`
+    : trendDir === 'regressing'
+      ? `Regressing (${trendPct.toFixed(0)}% slower)`
+      : 'Stable';
+  const trendColor = trendDir === 'improving' ? 'var(--vs-success, #22c55e)' : trendDir === 'regressing' ? 'var(--vs-danger, #ef4444)' : 'var(--vs-text-muted)';
+
+  container.innerHTML = `
+    <div class="card">
+      <div class="flex items-center justify-between mb-3">
+        <div class="card-title">Lead Time Trend</div>
+        <span style="font-size:12px;font-weight:600;color:${trendColor}">${trendLabel}</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:4px;height:${barMaxHeight + 20}px;padding-bottom:20px;position:relative">
+        ${runsWithData.map(run => {
+          const height = maxLead > 0 ? Math.max((run.lead_time_secs / maxLead) * barMaxHeight, 4) : 4;
+          const isLast = run === runsWithData[runsWithData.length - 1];
+          const pce = run.pce !== undefined && run.pce !== null ? `PCE: ${Number(run.pce).toFixed(0)}%` : '';
+          return `
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px" title="Run #${run.run_number}: ${formatSeconds(run.lead_time_secs)} ${pce}">
+              <span style="font-size:9px;color:var(--vs-text-muted);font-family:monospace">${formatSeconds(run.lead_time_secs)}</span>
+              <div style="width:100%;max-width:40px;height:${height}px;border-radius:4px 4px 0 0;background:${isLast ? 'var(--vs-primary)' : 'var(--vs-primary-light, rgba(99,102,241,0.4))'};transition:height 0.3s"></div>
+              <span style="font-size:9px;color:var(--vs-text-muted);position:absolute;bottom:0">#${run.run_number}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--vs-text-muted);margin-top:4px;border-top:1px solid var(--vs-border);padding-top:6px">
+        <span>Avg: ${formatSeconds(avgLead)}</span>
+        <span>Best: ${formatSeconds(minLead)}</span>
+        <span>Worst: ${formatSeconds(maxLead)}</span>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// Feature: Auto-Sync on Recording Complete
+// ============================================================
+function startAutoSync() {
+  stopAutoSync();
+  const isEnabled = document.getElementById('settingsAutoSync')?.classList.contains('active');
+  if (!isEnabled || !state.connected) return;
+
+  const freq = parseInt(document.getElementById('settingsSyncFrequency')?.value || '0');
+  if (freq <= 0) return;
+
+  state.autoSyncInterval = setInterval(async () => {
+    if (!state.connected || !state.recording || !state.steps.length) return;
+    // Only auto-sync if there's a recording and a default map selected
+    const mapId = document.getElementById('mapSelector')?.value;
+    if (!mapId || mapId === '' || mapId === '_new') return;
+
+    try {
+      const result = await window.api.sync.upload({ mapId, recording: state.recording });
+      if (result.success) {
+        const runNum = result.data?.run_number;
+        showToast(runNum ? `Auto-synced as Run #${runNum}` : 'Auto-synced to MapVS', 'success');
+      }
+    } catch (err) {
+      console.error('Auto-sync failed:', err);
+    }
+  }, freq);
+}
+
+function stopAutoSync() {
+  if (state.autoSyncInterval) {
+    clearInterval(state.autoSyncInterval);
+    state.autoSyncInterval = null;
+  }
+}
+
+// Wire auto-sync when recording completes
+function onRecordingComplete() {
+  const isAutoSync = document.getElementById('settingsAutoSync')?.classList.contains('active');
+  if (!isAutoSync || !state.connected || !state.recording || !state.steps.length) return;
+
+  const mapId = document.getElementById('mapSelector')?.value;
+  if (!mapId || mapId === '' || mapId === '_new') return;
+
+  // Auto-upload on completion
+  (async () => {
+    try {
+      const result = await window.api.sync.upload({ mapId, recording: state.recording });
+      if (result.success) {
+        const runNum = result.data?.run_number;
+        showToast(runNum ? `Auto-synced as Run #${runNum}` : 'Auto-synced to MapVS', 'success');
+      }
+    } catch (err) {
+      console.error('Auto-sync on complete failed:', err);
+    }
+  })();
 }
 
 // ============================================================
