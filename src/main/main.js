@@ -216,6 +216,32 @@ function setupIPC() {
     return { success: true, bounds: region };
   });
 
+  // Video dialog handler (Annotate tab)
+  ipcMain.handle('dialog:openVideo', async () => {
+    const result = await dialog.showOpenDialog({
+      filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm'] }],
+      properties: ['openFile'],
+    });
+    return result.filePaths[0] || null;
+  });
+
+  // Find the most recent recording session folder with video/screenshots
+  ipcMain.handle('recording:getLastSessionPath', async () => {
+    try {
+      const storagePath = store.get('preferences.storage_path');
+      if (!fs.existsSync(storagePath)) return null;
+      const files = fs.readdirSync(storagePath)
+        .filter(f => f.endsWith('.json'))
+        .map(f => ({ name: f, path: path.join(storagePath, f), mtime: fs.statSync(path.join(storagePath, f)).mtime }))
+        .sort((a, b) => b.mtime - a.mtime);
+      if (files.length === 0) return null;
+      const sessionData = JSON.parse(fs.readFileSync(files[0].path, 'utf8'));
+      return { sessionPath: files[0].path, session: sessionData, storagePath };
+    } catch (err) {
+      return null;
+    }
+  });
+
   // Dialog handlers
   ipcMain.handle('dialog:openFile', async () => {
     const result = await dialog.showOpenDialog({

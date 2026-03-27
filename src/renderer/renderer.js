@@ -110,6 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupQuickSimulate();
   setupRunHistoryControls();
   setupStepTriggers();
+  setupAnnotateTab();
   await loadSettings();
   await loadRegionState();
   await loadDisplays();
@@ -200,6 +201,7 @@ function switchTab(tabId) {
   if (tabId === 'review') refreshReviewTab();
   if (tabId === 'sync') refreshSyncTab();
   if (tabId === 'settings') loadDeletedRecordings();
+  if (tabId === 'annotate') refreshAnnotateMapDropdown();
 }
 
 // ============================================================
@@ -3097,4 +3099,484 @@ function escapeHtml(str) {
 function escapeAttr(str) {
   if (!str) return '';
   return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ============================================================
+// Annotate Tab — Video Annotation for Value Stream Mapping
+// ============================================================
+const annotateState = {
+  videoLoaded: false,
+  stages: [],         // { id, name, startTime, endTime, va: true, merged: false }
+  currentVa: true,
+  currentSpeed: 1,
+  cycleMode: false,
+  pendingStartTime: null,
+  linkedMapId: null,
+  stageIdCounter: 0,
+};
+
+function setupAnnotateTab() {
+  const video = document.getElementById('annotateVideo');
+  if (!video) return;
+
+  // Open Video
+  document.getElementById('annotateOpenVideoBtn')?.addEventListener('click', openVideoFile);
+  document.getElementById('annotateUseLastBtn')?.addEventListener('click', useLastRecording);
+
+  // Play/Pause
+  document.getElementById('annotatePlayBtn')?.addEventListener('click', annotateTogglePlay);
+
+  // Mark Start / End
+  document.getElementById('annotateMarkStartBtn')?.addEventListener('click', annotateMarkStart);
+  document.getElementById('annotateMarkEndBtn')?.addEventListener('click', annotateMarkEnd);
+
+  // VA/NVA Toggle
+  document.getElementById('annotateVaToggle')?.addEventListener('click', annotateToggleVaNva);
+
+  // Cycle Mode
+  document.getElementById('annotateCycleMode')?.addEventListener('change', (e) => {
+    annotateState.cycleMode = e.target.checked;
+  });
+
+  // Speed buttons
+  document.querySelectorAll('.annotate-speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => annotateSetSpeed(parseFloat(btn.dataset.speed)));
+  });
+
+  // Link to Map dropdown
+  document.getElementById('annotateLinkMap')?.addEventListener('change', (e) => {
+    annotateState.linkedMapId = e.target.value || null;
+    const saveRunBtn = document.getElementById('annotateSaveRunBtn');
+    if (saveRunBtn) saveRunBtn.disabled = !annotateState.linkedMapId || annotateState.stages.length === 0;
+  });
+
+  // Save / Export
+  document.getElementById('annotateSaveMapBtn')?.addEventListener('click', annotateSaveAsMap);
+  document.getElementById('annotateSaveRunBtn')?.addEventListener('click', annotateSaveAsRun);
+  document.getElementById('annotateExportCsvBtn')?.addEventListener('click', annotateExportCsv);
+
+  // Video time update
+  video.addEventListener('timeupdate', annotateOnTimeUpdate);
+  video.addEventListener('ended', () => {
+    if (annotateState.cycleMode) {
+      video.currentTime = 0;
+      video.play();
+    } else {
+      updateAnnotatePlayIcon(false);
+    }
+  });
+
+  // Timeline click to seek
+  document.getElementById('annotateTimeline')?.addEventListener('click', (e) => {
+    if (!video.duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    video.currentTime = pct * video.duration;
+  });
+
+  // Keyboard shortcuts (only when annotate tab is active)
+  document.addEventListener('keydown', annotateKeyHandler);
+}
+
+function annotateKeyHandler(e) {
+  if (state.activeTab !== 'annotate') return;
+  // Ignore if typing in input/select
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+  const video = document.getElementById('annotateVideo');
+  if (!video) return;
+
+  switch (e.key) {
+    case ' ':
+      e.preventDefault();
+      annotateTogglePlay();
+      break;
+    case 's':
+    case 'S':
+      if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); annotateMarkStart(); }
+      break;
+    case 'e':
+    case 'E':
+      e.preventDefault();
+      annotateMarkEnd();
+      break;
+    case 'v':
+    case 'V':
+      e.preventDefault();
+      annotateToggleVaNva();
+      break;
+    case 'n':
+    case 'N':
+      e.preventDefault();
+      annotateMarkStart();
+      break;
+    case 'd':
+    case 'D':
+      e.preventDefault();
+      annotateDeleteLastStage();
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      annotateStepFrame(e.shiftKey ? -30 : -1, video);
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      annotateStepFrame(e.shiftKey ? 30 : 1, video);
+      break;
+    case '1': annotateSetSpeed(0.25); break;
+    case '2': annotateSetSpeed(0.5); break;
+    case '3': annotateSetSpeed(1); break;
+    case '4': annotateSetSpeed(1.5); break;
+    case '5': annotateSetSpeed(2); break;
+  }
+}
+
+async function openVideoFile() {
+  try {
+    const filePath = await window.api.dialog.openVideo();
+    if (filePath) loadVideoForAnnotation(filePath);
+  } catch (err) {
+    showToast('Failed to open video: ' + err.message, 'error');
+  }
+}
+
+function loadVideoForAnnotation(filePath) {
+  const video = document.getElementById('annotateVideo');
+  const placeholder = document.getElementById('annotateVideoPlaceholder');
+  if (!video) return;
+
+  // Use file:// protocol for local files
+  const src = filePath.startsWith('file://') ? filePath : 'file://' + filePath;
+  video.src = src;
+  video.style.display = 'block';
+  if (placeholder) placeholder.style.display = 'none';
+  annotateState.videoLoaded = true;
+
+  // Reset stages
+  annotateState.stages = [];
+  annotateState.pendingStartTime = null;
+  annotateState.stageIdCounter = 0;
+  renderAnnotateStages();
+  updateAnnotateButtons();
+
+  video.addEventListener('loadedmetadata', () => {
+    annotateOnTimeUpdate();
+    showToast('Video loaded: ' + formatAnnotateTime(video.duration), 'success');
+  }, { once: true });
+}
+
+async function useLastRecording() {
+  try {
+    const result = await window.api.recording.getLastSessionPath();
+    if (!result || !result.session) {
+      showToast('No recordings found', 'warning');
+      return;
+    }
+    // Look for video files in the session's storage directory
+    const session = result.session;
+    if (session.videoPath) {
+      loadVideoForAnnotation(session.videoPath);
+    } else if (session.steps && session.steps.length > 0 && session.steps[0].screenshotPath) {
+      // No video — load as screenshot-based annotation
+      showToast('Last recording is screenshot-based. Open a video file instead.', 'warning');
+    } else {
+      showToast('No video found in last recording session', 'warning');
+    }
+  } catch (err) {
+    showToast('Failed to load last recording: ' + err.message, 'error');
+  }
+}
+
+function annotateTogglePlay() {
+  const video = document.getElementById('annotateVideo');
+  if (!video || !annotateState.videoLoaded) return;
+  if (video.paused) {
+    video.play();
+    updateAnnotatePlayIcon(true);
+  } else {
+    video.pause();
+    updateAnnotatePlayIcon(false);
+  }
+}
+
+function updateAnnotatePlayIcon(playing) {
+  const icon = document.getElementById('annotatePlayIcon');
+  if (!icon) return;
+  if (playing) {
+    icon.innerHTML = '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>';
+  } else {
+    icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+  }
+}
+
+function annotateStepFrame(frames, video) {
+  if (!video) video = document.getElementById('annotateVideo');
+  if (!video || !annotateState.videoLoaded) return;
+  video.pause();
+  updateAnnotatePlayIcon(false);
+  // Assume 30fps
+  video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + (frames / 30)));
+}
+
+function annotateSetSpeed(speed) {
+  const video = document.getElementById('annotateVideo');
+  if (video) video.playbackRate = speed;
+  annotateState.currentSpeed = speed;
+  document.querySelectorAll('.annotate-speed-btn').forEach(btn => {
+    btn.classList.toggle('active', parseFloat(btn.dataset.speed) === speed);
+  });
+}
+
+function annotateMarkStart() {
+  const video = document.getElementById('annotateVideo');
+  if (!video || !annotateState.videoLoaded) return;
+  annotateState.pendingStartTime = video.currentTime;
+  showToast('Start marked at ' + formatAnnotateTime(video.currentTime), 'info');
+}
+
+function annotateMarkEnd() {
+  const video = document.getElementById('annotateVideo');
+  if (!video || !annotateState.videoLoaded) return;
+  const endTime = video.currentTime;
+
+  if (annotateState.pendingStartTime === null) {
+    showToast('Mark a start time first (press S)', 'warning');
+    return;
+  }
+
+  if (endTime <= annotateState.pendingStartTime) {
+    showToast('End time must be after start time', 'warning');
+    return;
+  }
+
+  const stageNum = annotateState.stages.length + 1;
+  annotateState.stages.push({
+    id: ++annotateState.stageIdCounter,
+    name: 'Stage ' + stageNum,
+    startTime: annotateState.pendingStartTime,
+    endTime: endTime,
+    va: annotateState.currentVa,
+    merged: false,
+  });
+
+  annotateState.pendingStartTime = null;
+  renderAnnotateStages();
+  updateAnnotateButtons();
+  showToast('Stage ' + stageNum + ' added (' + formatAnnotateTime(annotateState.stages[stageNum - 1].startTime) + ' - ' + formatAnnotateTime(endTime) + ')', 'success');
+}
+
+function annotateToggleVaNva() {
+  annotateState.currentVa = !annotateState.currentVa;
+  const label = document.getElementById('annotateVaLabel');
+  const toggle = document.getElementById('annotateVaToggle');
+  if (label) label.textContent = annotateState.currentVa ? 'VA' : 'NVA';
+  if (toggle) {
+    toggle.style.background = annotateState.currentVa ? 'var(--vs-va)' : 'var(--vs-nva)';
+    toggle.style.color = '#fff';
+  }
+}
+
+function annotateDeleteLastStage() {
+  if (annotateState.stages.length === 0) return;
+  annotateState.stages.pop();
+  renderAnnotateStages();
+  updateAnnotateButtons();
+  showToast('Last stage removed', 'info');
+}
+
+function renderAnnotateStages() {
+  const list = document.getElementById('annotateStageList');
+  const countEl = document.getElementById('annotateStageCount');
+  if (!list) return;
+
+  if (countEl) countEl.textContent = annotateState.stages.length + ' stage' + (annotateState.stages.length !== 1 ? 's' : '');
+
+  if (annotateState.stages.length === 0) {
+    list.innerHTML = '<div class="annotate-stage-empty text-sm text-muted">Mark stages using the controls below.<br><kbd>S</kbd> = start, <kbd>E</kbd> = end, <kbd>N</kbd> = new stage</div>';
+    renderAnnotateTimeline();
+    return;
+  }
+
+  list.innerHTML = annotateState.stages.map((s, i) => `
+    <div class="annotate-stage-item" data-id="${s.id}">
+      <div class="annotate-stage-item-header">
+        <input type="text" class="annotate-stage-name" value="${escapeAttr(s.name)}" data-idx="${i}" />
+        <span class="annotate-stage-badge ${s.va ? 'va' : 'nva'}" data-idx="${i}" title="Click to toggle">${s.va ? 'VA' : 'NVA'}</span>
+        <button class="btn btn-ghost btn-xs annotate-stage-delete" data-idx="${i}" title="Delete">&times;</button>
+      </div>
+      <div class="annotate-stage-times text-xs text-muted">
+        ${formatAnnotateTime(s.startTime)} &mdash; ${formatAnnotateTime(s.endTime)}
+        <span style="margin-left:8px">${formatAnnotateTime(s.endTime - s.startTime)}</span>
+      </div>
+    </div>
+  `).join('');
+
+  // Bind events
+  list.querySelectorAll('.annotate-stage-name').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.dataset.idx);
+      if (annotateState.stages[idx]) annotateState.stages[idx].name = e.target.value;
+    });
+  });
+  list.querySelectorAll('.annotate-stage-badge').forEach(badge => {
+    badge.addEventListener('click', (e) => {
+      const idx = parseInt(e.target.dataset.idx);
+      if (annotateState.stages[idx]) {
+        annotateState.stages[idx].va = !annotateState.stages[idx].va;
+        renderAnnotateStages();
+      }
+    });
+  });
+  list.querySelectorAll('.annotate-stage-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt(e.target.dataset.idx);
+      annotateState.stages.splice(idx, 1);
+      renderAnnotateStages();
+      updateAnnotateButtons();
+    });
+  });
+
+  renderAnnotateTimeline();
+}
+
+function renderAnnotateTimeline() {
+  const container = document.getElementById('annotateTimelineSegments');
+  const video = document.getElementById('annotateVideo');
+  if (!container || !video || !video.duration) { if (container) container.innerHTML = ''; return; }
+
+  const dur = video.duration;
+  container.innerHTML = annotateState.stages.map(s => {
+    const left = (s.startTime / dur * 100).toFixed(2);
+    const width = ((s.endTime - s.startTime) / dur * 100).toFixed(2);
+    const color = s.va ? 'var(--vs-va)' : 'var(--vs-nva)';
+    return `<div class="annotate-timeline-seg" style="left:${left}%;width:${width}%;background:${color}" title="${escapeAttr(s.name)}"></div>`;
+  }).join('');
+}
+
+function annotateOnTimeUpdate() {
+  const video = document.getElementById('annotateVideo');
+  if (!video) return;
+  const ts = document.getElementById('annotateTimestamp');
+  const fn = document.getElementById('annotateFrameNum');
+  const cursor = document.getElementById('annotateTimelineCursor');
+  if (ts) ts.textContent = formatAnnotateTime(video.currentTime);
+  if (fn) fn.textContent = 'F' + Math.floor(video.currentTime * 30);
+  if (cursor && video.duration) {
+    cursor.style.left = (video.currentTime / video.duration * 100) + '%';
+  }
+}
+
+function updateAnnotateButtons() {
+  const hasStages = annotateState.stages.length > 0;
+  const exportBtn = document.getElementById('annotateExportCsvBtn');
+  const saveRunBtn = document.getElementById('annotateSaveRunBtn');
+  if (exportBtn) exportBtn.disabled = !hasStages;
+  if (saveRunBtn) saveRunBtn.disabled = !hasStages || !annotateState.linkedMapId;
+}
+
+async function refreshAnnotateMapDropdown() {
+  const select = document.getElementById('annotateLinkMap');
+  if (!select) return;
+  try {
+    const result = await window.api.sync.getMaps();
+    if (result.success && result.data) {
+      const current = select.value;
+      select.innerHTML = '<option value="">-- Link to Map --</option>' +
+        result.data.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+      if (current) select.value = current;
+    }
+  } catch {}
+}
+
+function buildAnnotateRecording() {
+  const totalStart = annotateState.stages.length > 0 ? annotateState.stages[0].startTime : 0;
+  const totalEnd = annotateState.stages.length > 0 ? annotateState.stages[annotateState.stages.length - 1].endTime : 0;
+  return {
+    mode: 'video-annotation',
+    startTime: new Date(Date.now() - (totalEnd - totalStart) * 1000).toISOString(),
+    endTime: new Date().toISOString(),
+    steps: annotateState.stages.map((s, i) => ({
+      stepNumber: i + 1,
+      notes: s.name,
+      timestamp: new Date(Date.now() - (totalEnd - s.startTime) * 1000).toISOString(),
+      endTimestamp: new Date(Date.now() - (totalEnd - s.endTime) * 1000).toISOString(),
+      duration: Math.round((s.endTime - s.startTime) * 1000),
+      va: s.va,
+      resource: '',
+      attachments: [],
+    })),
+  };
+}
+
+async function annotateSaveAsMap() {
+  if (annotateState.stages.length === 0) { showToast('Add at least one stage first', 'warning'); return; }
+  const name = prompt('Enter map name:');
+  if (!name) return;
+  try {
+    const recording = buildAnnotateRecording();
+    const result = await window.api.sync.createMap({ name, recording });
+    if (result.success) {
+      showToast('Map "' + name + '" created successfully', 'success');
+    } else {
+      showToast('Failed: ' + (result.error || 'Unknown error'), 'error');
+    }
+  } catch (err) {
+    showToast('Error creating map: ' + err.message, 'error');
+  }
+}
+
+async function annotateSaveAsRun() {
+  if (annotateState.stages.length === 0 || !annotateState.linkedMapId) return;
+  try {
+    const recording = buildAnnotateRecording();
+    const result = await window.api.sync.upload({ mapId: annotateState.linkedMapId, recording });
+    if (result.success) {
+      showToast('Run saved to map', 'success');
+    } else {
+      showToast('Failed: ' + (result.error || 'Unknown error'), 'error');
+    }
+  } catch (err) {
+    showToast('Error saving run: ' + err.message, 'error');
+  }
+}
+
+function annotateExportCsv() {
+  if (annotateState.stages.length === 0) return;
+  const rows = [['Stage', 'Name', 'Start (s)', 'End (s)', 'Duration (s)', 'VA/NVA'].join(',')];
+  annotateState.stages.forEach((s, i) => {
+    rows.push([
+      i + 1,
+      '"' + s.name.replace(/"/g, '""') + '"',
+      s.startTime.toFixed(3),
+      s.endTime.toFixed(3),
+      (s.endTime - s.startTime).toFixed(3),
+      s.va ? 'VA' : 'NVA'
+    ].join(','));
+  });
+
+  // Total row
+  const totalDur = annotateState.stages.reduce((sum, s) => sum + (s.endTime - s.startTime), 0);
+  const vaDur = annotateState.stages.filter(s => s.va).reduce((sum, s) => sum + (s.endTime - s.startTime), 0);
+  rows.push('');
+  rows.push(['', 'Total', '', '', totalDur.toFixed(3), ''].join(','));
+  rows.push(['', 'VA Total', '', '', vaDur.toFixed(3), ''].join(','));
+  rows.push(['', 'NVA Total', '', '', (totalDur - vaDur).toFixed(3), ''].join(','));
+  rows.push(['', 'PCE', '', '', ((vaDur / totalDur) * 100).toFixed(1) + '%', ''].join(','));
+
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'annotation_export_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV exported', 'success');
+}
+
+function formatAnnotateTime(seconds) {
+  if (seconds == null || isNaN(seconds)) return '00:00.000';
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return String(mins).padStart(2, '0') + ':' + secs.toFixed(3).padStart(6, '0');
 }

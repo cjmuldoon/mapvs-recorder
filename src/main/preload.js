@@ -28,7 +28,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // Dialog
   dialog: {
-    openFile: () => ipcRenderer.invoke('dialog:openFile')
+    openFile: () => ipcRenderer.invoke('dialog:openFile'),
+    openVideo: () => ipcRenderer.invoke('dialog:openVideo')
   },
 
   // System
@@ -47,6 +48,7 @@ contextBridge.exposeInMainWorld('api', {
     restore: (deletedPath) => ipcRenderer.invoke('recording:restore', deletedPath),
     permanentDelete: (deletedPath) => ipcRenderer.invoke('recording:permanent-delete', deletedPath),
     onStatusChanged: (callback) => ipcRenderer.on('recording:status-changed', (_e, status) => callback(status)),
+    getLastSessionPath: () => ipcRenderer.invoke('recording:getLastSessionPath'),
     onNewStep: (callback) => ipcRenderer.on('shortcut:new-step', () => callback()),
     onStopShortcut: (callback) => ipcRenderer.on('shortcut:stop', () => callback())
   },

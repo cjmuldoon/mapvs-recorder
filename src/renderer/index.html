@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' file: data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' file: data:; media-src 'self' file:;">
   <title>ValueStream Recorder</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -107,6 +107,10 @@
       <button class="tab-btn" data-tab="settings">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>
         Settings
+      </button>
+      <button class="tab-btn" data-tab="annotate">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        Annotate
       </button>
     </nav>
 
@@ -937,6 +941,123 @@
             <button class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
           </div>
         </div>
+      </div>
+
+      <!-- ==================== ANNOTATE TAB ==================== -->
+      <div class="tab-panel" id="tab-annotate">
+
+        <!-- Top Bar -->
+        <div class="annotate-toolbar">
+          <div class="annotate-toolbar-left">
+            <button class="btn btn-primary btn-sm" id="annotateOpenVideoBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              Open Video
+            </button>
+            <button class="btn btn-secondary btn-sm" id="annotateUseLastBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+              Use Last Recording
+            </button>
+          </div>
+          <div class="annotate-toolbar-right">
+            <select class="form-select" id="annotateLinkMap" style="width:auto;min-width:180px">
+              <option value="">-- Link to Map --</option>
+            </select>
+            <button class="btn btn-primary btn-sm" id="annotateSaveMapBtn">Save as New Map</button>
+            <button class="btn btn-secondary btn-sm" id="annotateSaveRunBtn" disabled>Save as Run</button>
+            <button class="btn btn-ghost btn-sm" id="annotateExportCsvBtn" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Main Area: Video + Stage List -->
+        <div class="annotate-main">
+
+          <!-- Left: Video Player -->
+          <div class="annotate-video-panel">
+            <div class="annotate-video-wrapper" id="annotateVideoWrapper">
+              <div class="annotate-video-placeholder" id="annotateVideoPlaceholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                <div class="text-sm text-muted mt-2">Open a video file or use your last recording</div>
+                <div class="text-xs text-muted" style="margin-top:4px">Supported: MP4, MOV, AVI, MKV, WebM</div>
+              </div>
+              <video id="annotateVideo" style="display:none;width:100%;max-height:100%;background:#000;border-radius:var(--vs-radius)"></video>
+            </div>
+
+            <!-- Timeline Bar -->
+            <div class="annotate-timeline" id="annotateTimeline">
+              <div class="annotate-timeline-segments" id="annotateTimelineSegments"></div>
+              <div class="annotate-timeline-cursor" id="annotateTimelineCursor"></div>
+            </div>
+          </div>
+
+          <!-- Right: Stage List -->
+          <div class="annotate-stage-panel">
+            <div class="annotate-stage-header">
+              <span class="font-semibold text-sm">Stages</span>
+              <span class="text-xs text-muted" id="annotateStageCount">0 stages</span>
+            </div>
+            <div class="annotate-stage-list" id="annotateStageList">
+              <div class="annotate-stage-empty text-sm text-muted">
+                Mark stages using the controls below.<br>
+                <kbd>S</kbd> = start, <kbd>E</kbd> = end, <kbd>N</kbd> = new stage
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Bottom Controls (sticky) -->
+        <div class="annotate-controls">
+          <div class="annotate-controls-row">
+            <!-- Playback -->
+            <div class="annotate-control-group">
+              <button class="btn btn-sm annotate-play-btn" id="annotatePlayBtn" title="Play/Pause (Space)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" id="annotatePlayIcon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              </button>
+              <span class="annotate-timestamp" id="annotateTimestamp">00:00.000</span>
+              <span class="text-xs text-muted" id="annotateFrameNum">F0</span>
+            </div>
+
+            <!-- Speed -->
+            <div class="annotate-control-group annotate-speed-group">
+              <button class="btn btn-ghost btn-xs annotate-speed-btn" data-speed="0.25">0.25x</button>
+              <button class="btn btn-ghost btn-xs annotate-speed-btn" data-speed="0.5">0.5x</button>
+              <button class="btn btn-ghost btn-xs annotate-speed-btn active" data-speed="1">1x</button>
+              <button class="btn btn-ghost btn-xs annotate-speed-btn" data-speed="1.5">1.5x</button>
+              <button class="btn btn-ghost btn-xs annotate-speed-btn" data-speed="2">2x</button>
+            </div>
+
+            <!-- Markers -->
+            <div class="annotate-control-group">
+              <button class="btn btn-sm" id="annotateMarkStartBtn" style="background:var(--vs-success);color:#fff" title="Mark Start (S)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><path d="M4 20L21 3"/></svg>
+                Start
+              </button>
+              <button class="btn btn-sm" id="annotateMarkEndBtn" style="background:var(--vs-danger);color:#fff" title="Mark End (E)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+                End
+              </button>
+            </div>
+
+            <!-- VA/NVA Toggle -->
+            <div class="annotate-control-group">
+              <button class="btn btn-sm annotate-va-toggle" id="annotateVaToggle" title="Toggle VA/NVA (V)">
+                <span class="annotate-va-label" id="annotateVaLabel">VA</span>
+              </button>
+            </div>
+
+            <!-- Cycle Mode -->
+            <div class="annotate-control-group">
+              <label class="annotate-cycle-label" title="Enable cycle mode for repeated tasks">
+                <input type="checkbox" id="annotateCycleMode">
+                <span class="text-xs">Cycle Mode</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
       </div>
 
     </div>
