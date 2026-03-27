@@ -191,6 +191,48 @@
             </div>
           </div>
 
+          <!-- Step Triggers -->
+          <div class="form-group" id="stepTriggersSection">
+            <label class="form-label">Step Triggers</label>
+            <div class="text-xs text-muted mb-2">Automatically mark step boundaries when specific keys are pressed or screen regions change during recording.</div>
+
+            <!-- Key Triggers -->
+            <div class="trigger-subsection mb-3">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold" style="color:var(--vs-text)">Key Triggers</span>
+                <div class="flex items-center gap-2">
+                  <label class="form-toggle-inline">
+                    <input type="checkbox" id="keyTriggersEnabled" checked>
+                    <span class="text-xs text-muted">Enabled</span>
+                  </label>
+                </div>
+              </div>
+              <div id="keyTriggerList" class="trigger-list mb-2"></div>
+              <button class="btn btn-secondary btn-sm" id="addKeyTriggerBtn">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add Key Trigger
+              </button>
+            </div>
+
+            <!-- Region Triggers -->
+            <div class="trigger-subsection">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold" style="color:var(--vs-text)">Region Triggers</span>
+                <div class="flex items-center gap-2">
+                  <label class="form-toggle-inline">
+                    <input type="checkbox" id="regionTriggersEnabled">
+                    <span class="text-xs text-muted">Enabled</span>
+                  </label>
+                </div>
+              </div>
+              <div id="regionTriggerList" class="trigger-list mb-2"></div>
+              <button class="btn btn-secondary btn-sm" id="addRegionTriggerBtn">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h18"/></svg>
+                Add Detection Region
+              </button>
+            </div>
+          </div>
+
           <button class="btn btn-primary btn-lg btn-full" id="startScreenRecording">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
             Start Recording
@@ -897,6 +939,46 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- Key Capture Modal -->
+    <div class="modal-overlay hidden" id="keyCaptureModal">
+      <div class="modal-dialog" style="max-width:360px">
+        <div class="modal-header">
+          <div class="card-title">Press a Key</div>
+          <button class="btn btn-ghost btn-sm" id="keyCaptureCancel">&times;</button>
+        </div>
+        <div class="modal-body" style="text-align:center;padding:24px 16px">
+          <div class="text-lg font-bold mb-2" id="keyCaptureDisplay" style="color:var(--vs-primary);min-height:28px">Waiting...</div>
+          <div class="text-xs text-muted">Press any key or key combination. Press Escape to cancel.</div>
+        </div>
+        <div class="modal-footer">
+          <select class="form-select" id="keyCaptureAction" style="width:auto">
+            <option value="new-step">Start new step</option>
+            <option value="complete-step">Complete current step</option>
+            <option value="toggle-va">Toggle VA/NVA</option>
+          </select>
+          <button class="btn btn-primary btn-sm" id="keyCaptureConfirm" disabled>Add Trigger</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Region Screenshot Preview Modal -->
+    <div class="modal-overlay hidden" id="regionDetectModal">
+      <div class="modal-dialog" style="max-width:640px">
+        <div class="modal-header">
+          <div class="card-title">Draw Detection Region</div>
+          <button class="btn btn-ghost btn-sm" id="regionDetectCancel">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:8px;position:relative">
+          <canvas id="regionDetectCanvas" style="width:100%;cursor:crosshair;border-radius:6px;background:#111"></canvas>
+          <div class="text-xs text-muted mt-2" style="text-align:center">Click and drag to draw a detection region on the screenshot</div>
+        </div>
+        <div class="modal-footer">
+          <input type="text" class="form-input" id="regionDetectName" placeholder="Region name..." style="max-width:200px" />
+          <button class="btn btn-primary btn-sm" id="regionDetectConfirm" disabled>Add Region</button>
+        </div>
+      </div>
     </div>
   </div>
 

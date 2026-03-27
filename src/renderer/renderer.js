@@ -4,6 +4,39 @@
  */
 
 // ============================================================
+// Error Reporting (forwards to Sentry via API)
+// ============================================================
+window.addEventListener('error', (e) => {
+  reportError(e.message, 'uncaught_error', e.filename + ':' + e.lineno);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  reportError(String(e.reason), 'unhandled_promise', '');
+});
+
+async function reportError(message, context, detail) {
+  try {
+    const apiUrl = localStorage.getItem('mapvs_api_url') || 'https://mapvs.com/api/v1';
+    const token = localStorage.getItem('mapvs_token') || '';
+    await fetch(apiUrl + '/client-error', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
+      },
+      body: JSON.stringify({
+        platform: 'desktop',
+        error: message,
+        context: context + (detail ? ' | ' + detail : ''),
+        device: navigator.platform,
+        os: navigator.userAgent,
+        app_version: '1.0.0',
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch {} // Don't let error reporting cause more errors
+}
+
+// ============================================================
 // State
 // ============================================================
 const state = {
@@ -76,6 +109,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupDeleteRecordingControls();
   setupQuickSimulate();
   setupRunHistoryControls();
+  setupStepTriggers();
   await loadSettings();
   await loadRegionState();
   await loadDisplays();
@@ -244,6 +278,11 @@ async function startRecording(mode) {
       if (mode === 'screen') {
         startStepPolling();
       }
+
+      // Start region change detection if enabled
+      if (state.regionTriggersEnabled && state.regionTriggers.length > 0) {
+        startRegionChangeDetection();
+      }
     }
   } catch (err) {
     showToast('Failed to start recording', 'error');
@@ -260,6 +299,7 @@ async function stopRecording() {
       state.steps = result.data.steps || [];
       stopTimer();
       stopStepPolling();
+      stopRegionChangeDetection();
       updateRecordingUI();
       showToast(`Captured ${state.steps.length} steps`, 'success');
       onRecordingComplete();
@@ -1148,6 +1188,456 @@ function stopStepPolling() {
     clearInterval(pollInterval);
     pollInterval = null;
   }
+}
+
+// ============================================================
+// Step Triggers — Key + Region Detection
+// ============================================================
+// State for step triggers
+state.keyTriggers = [];        // [{id, key, display, action}]
+state.regionTriggers = [];     // [{id, name, bounds:{x,y,w,h}, enabled}]
+state.keyTriggersEnabled = true;
+state.regionTriggersEnabled = false;
+state.keyTriggerCounter = 0;
+state.regionTriggerCounter = 0;
+state.regionCheckInterval = null;
+state.regionBaselines = {};    // {id: imageData}
+
+function setupStepTriggers() {
+  // Key triggers toggle
+  document.getElementById('keyTriggersEnabled')?.addEventListener('change', (e) => {
+    state.keyTriggersEnabled = e.target.checked;
+  });
+
+  // Region triggers toggle
+  document.getElementById('regionTriggersEnabled')?.addEventListener('change', (e) => {
+    state.regionTriggersEnabled = e.target.checked;
+  });
+
+  // Add key trigger button
+  document.getElementById('addKeyTriggerBtn')?.addEventListener('click', openKeyCaptureModal);
+
+  // Add region trigger button
+  document.getElementById('addRegionTriggerBtn')?.addEventListener('click', openRegionDetectModal);
+
+  // Key capture modal
+  document.getElementById('keyCaptureCancel')?.addEventListener('click', closeKeyCaptureModal);
+  document.getElementById('keyCaptureConfirm')?.addEventListener('click', confirmKeyCapture);
+
+  // Region detect modal
+  document.getElementById('regionDetectCancel')?.addEventListener('click', closeRegionDetectModal);
+  document.getElementById('regionDetectConfirm')?.addEventListener('click', confirmRegionDetect);
+
+  // Global keydown listener for step triggers during recording
+  document.addEventListener('keydown', handleStepTriggerKeydown);
+
+  // Render initial lists
+  renderKeyTriggerList();
+  renderRegionTriggerList();
+}
+
+// --- Key Trigger Capture ---
+let capturedKey = null;
+
+function openKeyCaptureModal() {
+  capturedKey = null;
+  document.getElementById('keyCaptureModal').classList.remove('hidden');
+  document.getElementById('keyCaptureDisplay').textContent = 'Waiting...';
+  document.getElementById('keyCaptureConfirm').disabled = true;
+
+  const handler = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      closeKeyCaptureModal();
+      document.removeEventListener('keydown', handler, true);
+      return;
+    }
+    const parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.metaKey) parts.push('Cmd');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (!['Control', 'Meta', 'Alt', 'Shift'].includes(e.key)) {
+      parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    }
+    const display = parts.join('+');
+    if (parts.length > 0 && !['Control', 'Meta', 'Alt', 'Shift'].includes(parts[parts.length - 1])) {
+      capturedKey = { key: e.key, ctrl: e.ctrlKey, meta: e.metaKey, alt: e.altKey, shift: e.shiftKey, display };
+      document.getElementById('keyCaptureDisplay').textContent = display;
+      document.getElementById('keyCaptureConfirm').disabled = false;
+      document.removeEventListener('keydown', handler, true);
+    }
+  };
+  document.addEventListener('keydown', handler, true);
+}
+
+function closeKeyCaptureModal() {
+  document.getElementById('keyCaptureModal').classList.add('hidden');
+  capturedKey = null;
+}
+
+function confirmKeyCapture() {
+  if (!capturedKey) return;
+  state.keyTriggerCounter++;
+  const action = document.getElementById('keyCaptureAction').value;
+  state.keyTriggers.push({
+    id: state.keyTriggerCounter,
+    key: capturedKey.key,
+    ctrl: capturedKey.ctrl,
+    meta: capturedKey.meta,
+    alt: capturedKey.alt,
+    shift: capturedKey.shift,
+    display: capturedKey.display,
+    action: action,
+  });
+  closeKeyCaptureModal();
+  renderKeyTriggerList();
+  showToast(`Key trigger "${capturedKey.display}" added`, 'success');
+}
+
+function renderKeyTriggerList() {
+  const list = document.getElementById('keyTriggerList');
+  if (!list) return;
+  if (state.keyTriggers.length === 0) {
+    list.innerHTML = '<div class="text-xs text-muted" style="padding:4px 0">No key triggers configured</div>';
+    return;
+  }
+  const actionLabels = { 'new-step': 'New step', 'complete-step': 'Complete step', 'toggle-va': 'Toggle VA/NVA' };
+  list.innerHTML = state.keyTriggers.map(t => `
+    <div class="trigger-item" data-id="${t.id}">
+      <span class="kbd">${escapeHtml(t.display)}</span>
+      <span class="text-xs text-muted">${actionLabels[t.action] || t.action}</span>
+      <button class="icon-btn btn-sm remove-key-trigger" data-id="${t.id}" title="Remove" style="margin-left:auto;width:22px;height:22px;color:var(--vs-danger)">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.remove-key-trigger').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.id);
+      state.keyTriggers = state.keyTriggers.filter(t => t.id !== id);
+      renderKeyTriggerList();
+    });
+  });
+}
+
+function handleStepTriggerKeydown(e) {
+  if (state.recordingStatus !== 'recording') return;
+  if (!state.keyTriggersEnabled) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+  for (const trigger of state.keyTriggers) {
+    const keyMatch = e.key === trigger.key || e.key.toUpperCase() === trigger.key.toUpperCase();
+    const modMatch = (!!e.ctrlKey === !!trigger.ctrl) && (!!e.metaKey === !!trigger.meta) &&
+                     (!!e.altKey === !!trigger.alt) && (!!e.shiftKey === !!trigger.shift);
+    if (keyMatch && modMatch) {
+      e.preventDefault();
+      executeTriggerAction(trigger.action);
+      return;
+    }
+  }
+}
+
+async function executeTriggerAction(action) {
+  if (state.recordingStatus !== 'recording') return;
+
+  if (action === 'new-step') {
+    try {
+      const result = await window.api.recording.addStep({ notes: '[auto: key trigger]' });
+      if (result.success) {
+        state.steps.push(result.data);
+        updateStepCounts();
+        updateLatestScreenshot(result.data);
+        updateRecentSteps();
+        showToast('Step triggered by key', 'info', 1500);
+      }
+    } catch (err) {
+      console.error('Key trigger step failed:', err);
+    }
+  } else if (action === 'complete-step') {
+    // Same as new-step in our model (marks boundary)
+    try {
+      const result = await window.api.recording.addStep({ notes: '[auto: step complete trigger]' });
+      if (result.success) {
+        state.steps.push(result.data);
+        updateStepCounts();
+        showToast('Step completed by trigger', 'info', 1500);
+      }
+    } catch (err) {
+      console.error('Key trigger complete failed:', err);
+    }
+  } else if (action === 'toggle-va') {
+    // Toggle VA/NVA on most recent step
+    if (state.steps.length > 0) {
+      const last = state.steps[state.steps.length - 1];
+      const cycle = ['undetermined', 'va', 'nva'];
+      const current = last.va_type || 'undetermined';
+      last.va_type = cycle[(cycle.indexOf(current) + 1) % cycle.length];
+      showToast(`Step marked ${last.va_type.toUpperCase()}`, 'info', 1500);
+    }
+  }
+}
+
+// --- Region Detection Triggers ---
+let regionDrawState = { drawing: false, startX: 0, startY: 0, endX: 0, endY: 0, screenshotImg: null };
+
+async function openRegionDetectModal() {
+  document.getElementById('regionDetectModal').classList.remove('hidden');
+  document.getElementById('regionDetectConfirm').disabled = true;
+  document.getElementById('regionDetectName').value = `Region ${state.regionTriggerCounter + 1}`;
+
+  // Capture a screenshot for preview
+  try {
+    const result = await window.api.capture.screenshot();
+    if (result.success && result.path) {
+      const canvas = document.getElementById('regionDetectCanvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        regionDrawState.screenshotImg = img;
+        setupRegionDrawHandlers(canvas);
+      };
+      img.src = `file://${result.path}`;
+    }
+  } catch (err) {
+    console.error('Screenshot for region detect failed:', err);
+  }
+}
+
+function setupRegionDrawHandlers(canvas) {
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+
+  const getPos = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  };
+
+  const onDown = (e) => {
+    drawing = true;
+    const pos = getPos(e);
+    regionDrawState.startX = pos.x;
+    regionDrawState.startY = pos.y;
+  };
+
+  const onMove = (e) => {
+    if (!drawing) return;
+    const pos = getPos(e);
+    regionDrawState.endX = pos.x;
+    regionDrawState.endY = pos.y;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (regionDrawState.screenshotImg) ctx.drawImage(regionDrawState.screenshotImg, 0, 0);
+    const x = Math.min(regionDrawState.startX, pos.x);
+    const y = Math.min(regionDrawState.startY, pos.y);
+    const w = Math.abs(pos.x - regionDrawState.startX);
+    const h = Math.abs(pos.y - regionDrawState.startY);
+    ctx.strokeStyle = '#F97316';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 3]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(249,115,22,0.15)';
+    ctx.fillRect(x, y, w, h);
+  };
+
+  const onUp = () => {
+    drawing = false;
+    const x = Math.min(regionDrawState.startX, regionDrawState.endX);
+    const y = Math.min(regionDrawState.startY, regionDrawState.endY);
+    const w = Math.abs(regionDrawState.endX - regionDrawState.startX);
+    const h = Math.abs(regionDrawState.endY - regionDrawState.startY);
+    if (w > 5 && h > 5) {
+      regionDrawState.bounds = {
+        x: x / canvas.width, y: y / canvas.height,
+        w: w / canvas.width, h: h / canvas.height,
+      };
+      document.getElementById('regionDetectConfirm').disabled = false;
+
+      // Redraw with solid line
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (regionDrawState.screenshotImg) ctx.drawImage(regionDrawState.screenshotImg, 0, 0);
+      ctx.strokeStyle = '#F97316';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([]);
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = 'rgba(249,115,22,0.1)';
+      ctx.fillRect(x, y, w, h);
+      ctx.font = '14px sans-serif';
+      ctx.fillStyle = '#F97316';
+      ctx.fillText('Detection Region', x + 6, y + 18);
+    }
+  };
+
+  // Remove old handlers
+  canvas.onmousedown = onDown;
+  canvas.onmousemove = onMove;
+  canvas.onmouseup = onUp;
+}
+
+function closeRegionDetectModal() {
+  document.getElementById('regionDetectModal').classList.add('hidden');
+  regionDrawState = { drawing: false, startX: 0, startY: 0, endX: 0, endY: 0, screenshotImg: null };
+}
+
+function confirmRegionDetect() {
+  if (!regionDrawState.bounds) return;
+  state.regionTriggerCounter++;
+  const name = document.getElementById('regionDetectName').value.trim() || `Region ${state.regionTriggerCounter}`;
+  state.regionTriggers.push({
+    id: state.regionTriggerCounter,
+    name: name,
+    bounds: { ...regionDrawState.bounds },
+    enabled: true,
+  });
+  closeRegionDetectModal();
+  renderRegionTriggerList();
+  showToast(`Region trigger "${name}" added`, 'success');
+}
+
+function renderRegionTriggerList() {
+  const list = document.getElementById('regionTriggerList');
+  if (!list) return;
+  if (state.regionTriggers.length === 0) {
+    list.innerHTML = '<div class="text-xs text-muted" style="padding:4px 0">No region triggers configured</div>';
+    return;
+  }
+  list.innerHTML = state.regionTriggers.map(t => `
+    <div class="trigger-item" data-id="${t.id}">
+      <span class="text-xs font-semibold" style="color:var(--vs-primary)">${escapeHtml(t.name)}</span>
+      <span class="text-xs text-muted">${Math.round(t.bounds.w * 100)}% x ${Math.round(t.bounds.h * 100)}%</span>
+      <button class="icon-btn btn-sm remove-region-trigger" data-id="${t.id}" title="Remove" style="margin-left:auto;width:22px;height:22px;color:var(--vs-danger)">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.remove-region-trigger').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.id);
+      state.regionTriggers = state.regionTriggers.filter(t => t.id !== id);
+      renderRegionTriggerList();
+    });
+  });
+}
+
+// Region change detection during recording — compare screenshots at intervals
+function startRegionChangeDetection() {
+  if (!state.regionTriggersEnabled || state.regionTriggers.length === 0) return;
+  state.regionBaselines = {};
+
+  // Capture baseline for each region
+  captureRegionBaselines();
+
+  // Check every 3 seconds
+  state.regionCheckInterval = setInterval(async () => {
+    if (state.recordingStatus !== 'recording' || !state.regionTriggersEnabled) {
+      stopRegionChangeDetection();
+      return;
+    }
+    await checkRegionChanges();
+  }, 3000);
+}
+
+function stopRegionChangeDetection() {
+  if (state.regionCheckInterval) {
+    clearInterval(state.regionCheckInterval);
+    state.regionCheckInterval = null;
+  }
+  state.regionBaselines = {};
+}
+
+async function captureRegionBaselines() {
+  try {
+    const result = await window.api.capture.screenshot();
+    if (!result.success || !result.path) return;
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      for (const region of state.regionTriggers) {
+        if (!region.enabled) continue;
+        const b = region.bounds;
+        const rx = Math.round(b.x * canvas.width);
+        const ry = Math.round(b.y * canvas.height);
+        const rw = Math.round(b.w * canvas.width);
+        const rh = Math.round(b.h * canvas.height);
+        if (rw > 0 && rh > 0) {
+          state.regionBaselines[region.id] = ctx.getImageData(rx, ry, rw, rh);
+        }
+      }
+    };
+    img.src = `file://${result.path}`;
+  } catch (err) {
+    console.error('Region baseline capture failed:', err);
+  }
+}
+
+async function checkRegionChanges() {
+  try {
+    const result = await window.api.capture.screenshot();
+    if (!result.success || !result.path) return;
+
+    const img = new Image();
+    img.onload = async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      for (const region of state.regionTriggers) {
+        if (!region.enabled) continue;
+        const baseline = state.regionBaselines[region.id];
+        if (!baseline) continue;
+
+        const b = region.bounds;
+        const rx = Math.round(b.x * canvas.width);
+        const ry = Math.round(b.y * canvas.height);
+        const rw = Math.round(b.w * canvas.width);
+        const rh = Math.round(b.h * canvas.height);
+        if (rw <= 0 || rh <= 0) continue;
+
+        const current = ctx.getImageData(rx, ry, rw, rh);
+        const changePct = computePixelChange(baseline.data, current.data);
+
+        if (changePct > 15) {
+          // Significant change detected — mark step boundary
+          await executeTriggerAction('new-step');
+          showToast(`Region "${region.name}" changed (${changePct.toFixed(0)}%)`, 'info', 2000);
+          // Update baseline
+          state.regionBaselines[region.id] = current;
+        }
+      }
+    };
+    img.src = `file://${result.path}`;
+  } catch (err) {
+    console.error('Region change check failed:', err);
+  }
+}
+
+function computePixelChange(data1, data2) {
+  if (data1.length !== data2.length) return 0;
+  let changed = 0;
+  const totalPixels = data1.length / 4;
+  for (let i = 0; i < data1.length; i += 4) {
+    const dr = Math.abs(data1[i] - data2[i]);
+    const dg = Math.abs(data1[i + 1] - data2[i + 1]);
+    const db = Math.abs(data1[i + 2] - data2[i + 2]);
+    if (dr + dg + db > 75) changed++;  // threshold per pixel
+  }
+  return (changed / totalPixels) * 100;
 }
 
 // ============================================================
