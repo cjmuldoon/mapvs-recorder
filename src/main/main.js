@@ -396,6 +396,13 @@ function setupIPC() {
     return powerMonitor.getSystemIdleTime();
   });
 
+  ipcMain.handle('system:openExternal', async (_event, url) => {
+    if (url && typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+      await shell.openExternal(url);
+    }
+    return true;
+  });
+
   // Multi-monitor handlers (Feature 3)
   ipcMain.handle('capture:getDisplays', async () => {
     return getDisplays();

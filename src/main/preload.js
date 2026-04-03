@@ -34,7 +34,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // System
   system: {
-    getIdleTime: () => ipcRenderer.invoke('system:getIdleTime')
+    getIdleTime: () => ipcRenderer.invoke('system:getIdleTime'),
+    openExternal: (url) => ipcRenderer.invoke('system:openExternal', url)
   },
 
   // Recording

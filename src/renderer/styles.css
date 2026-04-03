@@ -187,6 +187,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding-left: 72px; /* Clear macOS traffic lights */
 }
 
 .header-logo {
@@ -3084,3 +3085,40 @@ html, body {
   display: flex;
   animation: tabFadeSlideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* ── Maps Tab — Metric Cards ── */
+.metric-card {
+  background: var(--vs-bg);
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius);
+  padding: 12px;
+  text-align: center;
+}
+.metric-label {
+  font-size: 11px;
+  color: var(--vs-text-muted);
+  margin-bottom: 4px;
+}
+.metric-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--vs-text);
+}
+.metric-value.text-sm { font-size: 13px; font-weight: 600; }
+.card-interactive:hover {
+  border-color: var(--vs-primary);
+  box-shadow: 0 0 0 1px var(--vs-primary);
+}
+.text-success { color: #059669; }
+.text-warning { color: #D97706; }
+.badge-success { background: rgba(5,150,105,0.1); color: #059669; }
+.badge-warning { background: rgba(217,119,6,0.1); color: #D97706; }
+.badge-info { background: rgba(59,130,246,0.1); color: #3B82F6; }
+.badge-primary { background: rgba(99,102,241,0.1); color: #6366F1; }
+.badge-muted { background: rgba(107,114,128,0.1); color: #6B7280; }
+.space-y > * + * { margin-top: 8px; }
+.table-wrapper { overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-table th { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--vs-border); color: var(--vs-text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+.data-table td { padding: 6px 10px; border-bottom: 1px solid var(--vs-border-light, var(--vs-border)); }
+.data-table .text-right { text-align: right; font-variant-numeric: tabular-nums; }

@@ -3580,3 +3580,214 @@ function formatAnnotateTime(seconds) {
   const secs = seconds % 60;
   return String(mins).padStart(2, '0') + ':' + secs.toFixed(3).padStart(6, '0');
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAPS TAB — Map detail, analytics, runs, improvements
+// ═══════════════════════════════════════════════════════════════════════════
+
+let mapsData = [];
+let selectedMapId = null;
+
+async function loadMaps() {
+  const container = document.getElementById('mapsListContainer');
+  try {
+    const result = await window.api.sync.getMaps();
+    if (!result || !result.maps) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg></div><h3 class="empty-state-title">Not Connected</h3><p class="empty-state-text">Sign in and sync to see your maps.</p></div>';
+      return;
+    }
+    mapsData = result.maps;
+    renderMapList();
+  } catch (err) {
+    container.innerHTML = '<div class="text-sm text-muted" style="padding:20px;text-align:center">Failed to load maps. Check connection.</div>';
+  }
+}
+
+function renderMapList() {
+  const container = document.getElementById('mapsListContainer');
+  if (!mapsData.length) {
+    container.innerHTML = '<div class="empty-state"><h3 class="empty-state-title">No Maps Yet</h3><p class="empty-state-text">Create a map from a recording or on the web.</p></div>';
+    return;
+  }
+  container.innerHTML = mapsData.map(m => {
+    const stages = m.stages_count || m.stage_count || 0;
+    const pce = m.pce ? m.pce.toFixed(1) + '%' : '—';
+    return `
+      <div class="card card-interactive" onclick="showMapDetail(${m.id})" style="margin-bottom:8px;padding:14px;cursor:pointer;">
+        <div style="display:flex;justify-content:space-between;align-items:start;">
+          <div>
+            <div class="font-semibold">${escapeHtml(m.name)}</div>
+            <div class="text-sm text-muted" style="margin-top:2px;">${escapeHtml(m.description || '')}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <span class="badge">${stages} stages</span>
+            ${m.industry ? '<span class="badge" style="margin-left:4px;">' + escapeHtml(m.industry) + '</span>' : ''}
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:8px;" class="text-sm text-muted">
+          <span>PCE: <strong class="${parseFloat(pce) > 25 ? 'text-success' : 'text-warning'}">${pce}</strong></span>
+          ${m.lead_time_hrs ? '<span>Lead: <strong>' + formatHrs(m.lead_time_hrs) + '</strong></span>' : ''}
+          ${m.cycle_time_hrs ? '<span>Cycle: <strong>' + formatHrs(m.cycle_time_hrs) + '</strong></span>' : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function showMapDetail(mapId) {
+  selectedMapId = mapId;
+  document.getElementById('mapsListContainer').classList.add('hidden');
+  document.getElementById('mapDetailPanel').classList.remove('hidden');
+
+  // Fetch map detail from API
+  try {
+    const result = await window.api.sync.request(`/maps/${mapId}`);
+    if (!result || result.status === 'error') throw new Error('Failed');
+    const map = result.data || result;
+
+    document.getElementById('mapDetailTitle').textContent = map.name || '';
+    document.getElementById('mapDetailDesc').textContent = map.description || '';
+    document.getElementById('mapDetailIndustry').textContent = map.industry || 'General';
+    document.getElementById('mapDetailState').textContent = map.map_state === 'future_state' ? 'Future State' : 'Current State';
+    document.getElementById('mapDetailStages').textContent = (map.stages?.length || 0) + ' stages';
+
+    // Calculate metrics
+    const stages = map.stages || [];
+    let totalCycle = 0, totalWait = 0, vaTime = 0, bottleneck = { name: '—', ct: 0 };
+    stages.forEach(s => {
+      const ct = parseFloat(s.cycle_time_hrs) || 0;
+      const wt = parseFloat(s.wait_time_hrs) || 0;
+      totalCycle += ct;
+      totalWait += wt;
+      if (s.value_add) vaTime += ct;
+      if (ct > bottleneck.ct) bottleneck = { name: s.stage, ct: ct };
+    });
+    const leadTime = totalCycle + totalWait;
+    const pce = leadTime > 0 ? (vaTime / leadTime * 100) : 0;
+
+    document.getElementById('mapMetricLeadTime').textContent = formatHrs(leadTime);
+    document.getElementById('mapMetricCycleTime').textContent = formatHrs(totalCycle);
+    document.getElementById('mapMetricPCE').textContent = pce.toFixed(1) + '%';
+    document.getElementById('mapMetricBottleneck').textContent = bottleneck.name;
+
+    // Stages table
+    const tbody = document.getElementById('mapStagesBody');
+    tbody.innerHTML = stages.map((s, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${escapeHtml(s.stage || s.name || '')}</td>
+        <td class="text-right">${(parseFloat(s.cycle_time_hrs) || 0).toFixed(2)}</td>
+        <td class="text-right">${(parseFloat(s.wait_time_hrs) || 0).toFixed(2)}</td>
+        <td><span class="badge badge-${s.value_add ? 'success' : 'warning'}">${s.work_type || (s.value_add ? 'VA' : 'NVA')}</span></td>
+        <td class="text-muted">${escapeHtml(s.resource || '')}</td>
+      </tr>`).join('');
+
+    // Load runs
+    await loadMapRuns(mapId);
+
+    // Load improvements
+    await loadMapImprovements(mapId);
+
+  } catch (err) {
+    document.getElementById('mapDetailTitle').textContent = 'Error loading map';
+  }
+
+  // Wire up browser buttons
+  const baseUrl = (await window.api.settings.get()).api_url?.replace('/api/v1', '') || 'https://mapvs.com';
+  document.getElementById('openRunsWebBtn').onclick = () => window.api.system?.openExternal?.(`${baseUrl}/maps/${mapId}`) || window.open(`${baseUrl}/maps/${mapId}`);
+  document.getElementById('openImprovementsWebBtn').onclick = () => window.api.system?.openExternal?.(`${baseUrl}/improvements`) || window.open(`${baseUrl}/improvements`);
+  document.getElementById('openAnalyticsWebBtn').onclick = () => window.api.system?.openExternal?.(`${baseUrl}/analytics`) || window.open(`${baseUrl}/analytics`);
+  document.getElementById('openCanvasWebBtn').onclick = () => window.api.system?.openExternal?.(`${baseUrl}/canvas/${mapId}`) || window.open(`${baseUrl}/canvas/${mapId}`);
+  document.getElementById('openSimulateWebBtn').onclick = () => window.api.system?.openExternal?.(`${baseUrl}/maps/${mapId}/simulate`) || window.open(`${baseUrl}/maps/${mapId}/simulate`);
+  document.getElementById('openLineBalanceWebBtn').onclick = () => window.api.system?.openExternal?.(`${baseUrl}/maps/${mapId}/line-balance`) || window.open(`${baseUrl}/maps/${mapId}/line-balance`);
+  document.getElementById('openOEEWebBtn').onclick = () => window.api.system?.openExternal?.(`${baseUrl}/maps/${mapId}/oee`) || window.open(`${baseUrl}/maps/${mapId}/oee`);
+}
+
+async function loadMapRuns(mapId) {
+  const container = document.getElementById('mapRunsList');
+  try {
+    const result = await window.api.sync.getMapRuns(mapId);
+    const runs = result?.runs || result?.data?.runs || [];
+    if (!runs.length) {
+      container.innerHTML = '<div class="text-sm text-muted" style="padding:12px;">No recording runs yet.</div>';
+      return;
+    }
+    container.innerHTML = runs.map(r => `
+      <div class="card" style="padding:10px;margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <span class="font-semibold">Run #${r.run_number}</span>
+            ${r.label ? '<span class="text-muted text-sm"> — ' + escapeHtml(r.label) + '</span>' : ''}
+          </div>
+          <span class="badge badge-${r.status === 'completed' ? 'success' : 'warning'}">${r.status || 'pending'}</span>
+        </div>
+        <div class="text-sm text-muted" style="margin-top:4px;">
+          ${r.source_device || 'web'} · ${r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
+        </div>
+      </div>`).join('');
+  } catch (err) {
+    container.innerHTML = '<div class="text-sm text-muted" style="padding:12px;">Could not load runs.</div>';
+  }
+}
+
+async function loadMapImprovements(mapId) {
+  const container = document.getElementById('mapImprovementsList');
+  try {
+    const result = await window.api.sync.request(`/maps/${mapId}/improvements`);
+    const items = result?.data?.improvements || result?.improvements || [];
+    if (!items.length) {
+      container.innerHTML = '<div class="text-sm text-muted" style="padding:12px;">No improvements tracked.</div>';
+      return;
+    }
+    const statusColors = { identified: 'warning', planned: 'info', in_progress: 'primary', verified: 'success', completed: 'success', closed: 'muted' };
+    container.innerHTML = items.map(imp => `
+      <div class="card" style="padding:10px;margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span class="font-semibold text-sm">${escapeHtml(imp.title)}</span>
+          <span class="badge badge-${statusColors[imp.status] || 'muted'}">${imp.status || 'identified'}</span>
+        </div>
+        ${imp.description ? '<div class="text-sm text-muted" style="margin-top:2px;">' + escapeHtml(imp.description) + '</div>' : ''}
+      </div>`).join('');
+  } catch (err) {
+    container.innerHTML = '<div class="text-sm text-muted" style="padding:12px;">Could not load improvements.</div>';
+  }
+}
+
+function formatHrs(v) {
+  v = parseFloat(v) || 0;
+  if (v < 1 / 60) return (v * 3600).toFixed(0) + 's';
+  if (v < 1) return (v * 60).toFixed(1) + 'm';
+  return v.toFixed(2) + 'h';
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Wire up Maps tab buttons
+document.addEventListener('DOMContentLoaded', () => {
+  const refreshBtn = document.getElementById('refreshMapsBtn');
+  if (refreshBtn) refreshBtn.addEventListener('click', loadMaps);
+
+  const openWebBtn = document.getElementById('openMapsWebBtn');
+  if (openWebBtn) openWebBtn.addEventListener('click', async () => {
+    const settings = await window.api.settings.get();
+    const baseUrl = settings.api_url?.replace('/api/v1', '') || 'https://mapvs.com';
+    window.api.system?.openExternal?.(`${baseUrl}/maps`) || window.open(`${baseUrl}/maps`);
+  });
+
+  const backBtn = document.getElementById('backToMapListBtn');
+  if (backBtn) backBtn.addEventListener('click', () => {
+    document.getElementById('mapDetailPanel').classList.add('hidden');
+    document.getElementById('mapsListContainer').classList.remove('hidden');
+  });
+
+  // Auto-load maps when Maps tab is activated
+  const mapsTabBtn = document.querySelector('[data-tab="maps"]');
+  if (mapsTabBtn) {
+    mapsTabBtn.addEventListener('click', () => {
+      if (!mapsData.length) loadMaps();
+    });
+  }
+});
