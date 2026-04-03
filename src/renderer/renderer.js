@@ -757,6 +757,14 @@ function setupSyncControls() {
   const bannerSignIn = document.getElementById('bannerSignInBtn');
   if (bannerSignIn) bannerSignIn.addEventListener('click', () => window.api.auth.login());
 
+  // Banner register button
+  const bannerRegister = document.getElementById('bannerRegisterBtn');
+  if (bannerRegister) bannerRegister.addEventListener('click', async () => {
+    const settings = await window.api.settings.get();
+    const baseUrl = settings.api_url?.replace('/api/v1', '') || 'https://mapvs.com';
+    window.api.system.openExternal(`${baseUrl}/auth/register`);
+  });
+
   // Annotate web link
   const openWebAnnotate = document.getElementById('openWebAnnotateBtn');
   if (openWebAnnotate) openWebAnnotate.addEventListener('click', async () => {

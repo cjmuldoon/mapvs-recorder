@@ -124,7 +124,10 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-2px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         Sign in to save your progress and load existing flows.
       </span>
-      <button class="btn btn-sm btn-primary" id="bannerSignInBtn" style="flex-shrink:0;">Sign In</button>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="btn btn-sm btn-primary" id="bannerSignInBtn">Sign In</button>
+        <button class="btn btn-sm btn-ghost" id="bannerRegisterBtn" style="color:var(--vs-primary);">Register</button>
+      </div>
     </div>
 
     <!-- Live Recording Banner -->
@@ -135,15 +138,51 @@
 
       <!-- ==================== RECORD TAB ==================== -->
       <div class="tab-panel active" id="tab-record">
-        <!-- Animated flow illustration -->
-        <div class="flow-illustration">
-          <div class="flow-node">REC</div>
-          <span class="flow-arrow">&#8594;</span>
-          <div class="flow-node">MAP</div>
-          <span class="flow-arrow">&#8594;</span>
-          <div class="flow-node">FIX</div>
-          <span class="flow-arrow">&#8594;</span>
-          <div class="flow-node">WIN</div>
+        <!-- VSM Timeline illustration -->
+        <div style="width:100%;padding:12px 24px 4px;opacity:0.35;">
+          <svg viewBox="0 0 800 60" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+            <!-- Process boxes -->
+            <rect x="20" y="8" width="14" height="18" rx="3" fill="var(--vs-primary, #3B82F6)" opacity="0.5"/>
+            <rect x="60" y="5" width="80" height="24" rx="5" fill="var(--vs-primary, #3B82F6)" opacity="0.3" stroke="var(--vs-primary, #3B82F6)" stroke-width="0.5" stroke-opacity="0.4"/>
+            <rect x="170" y="5" width="100" height="24" rx="5" fill="var(--vs-primary, #3B82F6)" opacity="0.25" stroke="var(--vs-primary, #3B82F6)" stroke-width="0.5" stroke-opacity="0.4"/>
+            <rect x="300" y="5" width="70" height="24" rx="5" fill="var(--vs-primary, #3B82F6)" opacity="0.35" stroke="var(--vs-primary, #3B82F6)" stroke-width="0.5" stroke-opacity="0.4"/>
+            <rect x="400" y="5" width="90" height="24" rx="5" fill="var(--vs-primary, #3B82F6)" opacity="0.2" stroke="var(--vs-primary, #3B82F6)" stroke-width="0.5" stroke-opacity="0.4"/>
+            <rect x="520" y="5" width="60" height="24" rx="5" fill="var(--vs-primary, #3B82F6)" opacity="0.3" stroke="var(--vs-primary, #3B82F6)" stroke-width="0.5" stroke-opacity="0.4"/>
+            <polygon points="610,8 618,17 610,26" fill="var(--vs-primary, #3B82F6)" opacity="0.25"/>
+            <rect x="645" y="5" width="80" height="24" rx="5" fill="var(--vs-primary, #3B82F6)" opacity="0.25" stroke="var(--vs-primary, #3B82F6)" stroke-width="0.5" stroke-opacity="0.4"/>
+            <rect x="755" y="8" width="14" height="18" rx="3" fill="var(--vs-primary, #3B82F6)" opacity="0.5"/>
+            <!-- Arrows -->
+            <line x1="36" y1="17" x2="58" y2="17" stroke="var(--vs-text-muted, #9CA3AF)" stroke-width="0.8" opacity="0.5"/>
+            <line x1="142" y1="17" x2="168" y2="17" stroke="var(--vs-text-muted, #9CA3AF)" stroke-width="0.8" opacity="0.5"/>
+            <line x1="272" y1="17" x2="298" y2="17" stroke="var(--vs-text-muted, #9CA3AF)" stroke-width="0.8" opacity="0.5"/>
+            <line x1="372" y1="17" x2="398" y2="17" stroke="var(--vs-text-muted, #9CA3AF)" stroke-width="0.8" opacity="0.5"/>
+            <line x1="492" y1="17" x2="518" y2="17" stroke="var(--vs-text-muted, #9CA3AF)" stroke-width="0.8" opacity="0.5"/>
+            <line x1="582" y1="17" x2="608" y2="17" stroke="var(--vs-text-muted, #9CA3AF)" stroke-width="0.8" opacity="0.5"/>
+            <line x1="620" y1="17" x2="643" y2="17" stroke="var(--vs-text-muted, #9CA3AF)" stroke-width="0.8" opacity="0.5"/>
+            <line x1="727" y1="17" x2="753" y2="17" stroke="var(--vs-text-muted, #9CA3AF)" stroke-width="0.8" opacity="0.5"/>
+            <!-- Inventory triangles -->
+            <polygon points="155,26 160,34 150,34" fill="var(--vs-warning, #D97706)" opacity="0.25"/>
+            <polygon points="285,26 290,34 280,34" fill="var(--vs-warning, #D97706)" opacity="0.2"/>
+            <polygon points="505,26 510,34 500,34" fill="var(--vs-warning, #D97706)" opacity="0.25"/>
+            <!-- Timeline bar -->
+            <rect x="60" y="42" width="80" height="4" rx="2" fill="var(--vs-primary, #3B82F6)" opacity="0.2"/>
+            <rect x="142" y="42" width="26" height="4" rx="2" fill="var(--vs-text-muted, #9CA3AF)" opacity="0.15"/>
+            <rect x="170" y="42" width="100" height="4" rx="2" fill="var(--vs-primary, #3B82F6)" opacity="0.25"/>
+            <rect x="272" y="42" width="26" height="4" rx="2" fill="var(--vs-text-muted, #9CA3AF)" opacity="0.15"/>
+            <rect x="300" y="42" width="70" height="4" rx="2" fill="var(--vs-primary, #3B82F6)" opacity="0.3"/>
+            <rect x="372" y="42" width="26" height="4" rx="2" fill="var(--vs-text-muted, #9CA3AF)" opacity="0.15"/>
+            <rect x="400" y="42" width="90" height="4" rx="2" fill="var(--vs-primary, #3B82F6)" opacity="0.2"/>
+            <rect x="492" y="42" width="26" height="4" rx="2" fill="var(--vs-text-muted, #9CA3AF)" opacity="0.15"/>
+            <rect x="520" y="42" width="60" height="4" rx="2" fill="var(--vs-primary, #3B82F6)" opacity="0.25"/>
+            <rect x="645" y="42" width="80" height="4" rx="2" fill="var(--vs-primary, #3B82F6)" opacity="0.2"/>
+            <!-- Data boxes (tiny) -->
+            <rect x="70" y="30" width="20" height="8" rx="1.5" fill="var(--vs-border, #E5E7EB)" opacity="0.3"/>
+            <rect x="190" y="30" width="20" height="8" rx="1.5" fill="var(--vs-border, #E5E7EB)" opacity="0.3"/>
+            <rect x="310" y="30" width="20" height="8" rx="1.5" fill="var(--vs-border, #E5E7EB)" opacity="0.3"/>
+            <rect x="420" y="30" width="20" height="8" rx="1.5" fill="var(--vs-border, #E5E7EB)" opacity="0.3"/>
+            <rect x="530" y="30" width="20" height="8" rx="1.5" fill="var(--vs-border, #E5E7EB)" opacity="0.3"/>
+            <rect x="660" y="30" width="20" height="8" rx="1.5" fill="var(--vs-border, #E5E7EB)" opacity="0.3"/>
+          </svg>
         </div>
 
         <!-- Mode Toggle -->
