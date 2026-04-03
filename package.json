@@ -29,7 +29,7 @@
   },
   "build": {
     "appId": "com.mapvs.recorder",
-    "productName": "ValueStream Recorder",
+    "productName": "ValueStream by MapVS",
     "directories": {
       "output": "dist"
     },

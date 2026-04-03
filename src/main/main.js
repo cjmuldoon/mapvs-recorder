@@ -743,12 +743,55 @@ app.on('before-quit', () => {
 });
 
 // Handle deep link for OAuth callback
-app.setAsDefaultProtocolClient('mapvs-recorder');
-app.on('open-url', (_event, url) => {
-  const urlObj = new URL(url);
-  const token = urlObj.searchParams.get('token');
-  if (token) {
-    store.set('token', token);
-    mainWindow?.webContents.send('auth:token-received', token);
+// In dev mode, register with the electron executable path
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('mapvs-recorder', process.execPath, [path.resolve(process.argv[1])]);
   }
+} else {
+  app.setAsDefaultProtocolClient('mapvs-recorder');
+}
+
+// macOS: open-url fires when clicking the custom protocol link
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  console.log('Received deep link:', url);
+  handleDeepLink(url);
 });
+
+// Windows/Linux: second-instance fires with the URL in argv
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, commandLine) => {
+    // The deep link URL is the last argument
+    const url = commandLine.find(arg => arg.startsWith('mapvs-recorder://'));
+    if (url) {
+      console.log('Second instance deep link:', url);
+      handleDeepLink(url);
+    }
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
+function handleDeepLink(url) {
+  try {
+    const urlObj = new URL(url);
+    const token = urlObj.searchParams.get('token');
+    if (token) {
+      console.log('Token received from OAuth, length:', token.length);
+      store.set('token', token);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('auth:token-received', token);
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    }
+  } catch (err) {
+    console.error('Deep link parse error:', err);
+  }
+}
