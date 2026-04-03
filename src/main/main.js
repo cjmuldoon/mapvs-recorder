@@ -80,11 +80,45 @@ function registerShortcuts() {
 }
 
 function setupIPC() {
-  // Auth handlers
+  // Auth handlers — uses a local HTTP server to receive the OAuth callback
   ipcMain.handle('auth:login', async () => {
     const apiUrl = store.get('api_url', 'https://mapvs.com/api/v1');
     const baseUrl = apiUrl.replace('/api/v1', '');
-    await shell.openExternal(`${baseUrl}/oauth/authorize?client=recorder&redirect=mapvs-recorder://auth`);
+
+    // Start a temporary local HTTP server to receive the token
+    const http = require('http');
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      const token = url.searchParams.get('token');
+
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      if (token) {
+        store.set('token', token);
+        mainWindow?.webContents.send('auth:token-received', token);
+        mainWindow?.show();
+        mainWindow?.focus();
+        res.end(`<!DOCTYPE html><html><head><title>Success</title>
+          <style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#F0FDF4;}
+          .card{text-align:center;padding:40px;}.icon{font-size:48px;margin-bottom:16px;}</style></head>
+          <body><div class="card"><div class="icon">&#10003;</div>
+          <h2>Connected to ValueStream</h2>
+          <p style="color:#6B7280;">You can close this tab and return to the app.</p></div></body></html>`);
+      } else {
+        res.end('<html><body><h2>Error: No token received</h2></body></html>');
+      }
+      // Shut down the server after receiving the token
+      setTimeout(() => server.close(), 1000);
+    });
+
+    // Listen on a random available port
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    // Auto-close server after 5 minutes if no callback
+    setTimeout(() => { try { server.close(); } catch (_) {} }, 300000);
+
+    // Open browser with localhost callback
+    await shell.openExternal(`${baseUrl}/oauth/authorize?client=recorder&redirect=http://127.0.0.1:${port}/callback`);
     return true;
   });
 
