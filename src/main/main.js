@@ -716,6 +716,11 @@ app.whenReady().then(() => {
   });
   registerShortcuts();
   setupIPC();
+
+  // Process any deep link that arrived before the window was ready
+  mainWindow.webContents.on('did-finish-load', () => {
+    processPendingDeepLink();
+  });
   setupUpdateIPC();
   setupAutoUpdater();
 
@@ -742,8 +747,8 @@ app.on('before-quit', () => {
   globalShortcut.unregisterAll();
 });
 
-// Handle deep link for OAuth callback
-// In dev mode, register with the electron executable path
+// ── Deep link / OAuth callback ──
+// Register protocol handler
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient('mapvs-recorder', process.execPath, [path.resolve(process.argv[1])]);
@@ -752,30 +757,26 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('mapvs-recorder');
 }
 
-// macOS: open-url fires when clicking the custom protocol link
+// Store any deep link URL received before the window is ready
+let pendingDeepLink = null;
+
+// macOS: open-url fires when the OS opens a mapvs-recorder:// URL
+// MUST be registered before app.whenReady()
 app.on('open-url', (event, url) => {
   event.preventDefault();
-  console.log('Received deep link:', url);
-  handleDeepLink(url);
+  console.log('[DeepLink] open-url:', url);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    handleDeepLink(url);
+  } else {
+    pendingDeepLink = url;
+  }
 });
 
-// Windows/Linux: second-instance fires with the URL in argv
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-  app.quit();
-} else {
-  app.on('second-instance', (_event, commandLine) => {
-    // The deep link URL is the last argument
-    const url = commandLine.find(arg => arg.startsWith('mapvs-recorder://'));
-    if (url) {
-      console.log('Second instance deep link:', url);
-      handleDeepLink(url);
-    }
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-  });
+// Also check argv for deep link URL (macOS cold start)
+const argvUrl = process.argv.find(arg => arg.startsWith('mapvs-recorder://'));
+if (argvUrl) {
+  console.log('[DeepLink] Found in argv:', argvUrl);
+  pendingDeepLink = argvUrl;
 }
 
 function handleDeepLink(url) {
@@ -783,7 +784,7 @@ function handleDeepLink(url) {
     const urlObj = new URL(url);
     const token = urlObj.searchParams.get('token');
     if (token) {
-      console.log('Token received from OAuth, length:', token.length);
+      console.log('[DeepLink] Token received, length:', token.length);
       store.set('token', token);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('auth:token-received', token);
@@ -792,6 +793,15 @@ function handleDeepLink(url) {
       }
     }
   } catch (err) {
-    console.error('Deep link parse error:', err);
+    console.error('[DeepLink] Parse error:', err);
+  }
+}
+
+// Process any pending deep link after window is ready
+function processPendingDeepLink() {
+  if (pendingDeepLink) {
+    console.log('[DeepLink] Processing pending:', pendingDeepLink);
+    handleDeepLink(pendingDeepLink);
+    pendingDeepLink = null;
   }
 }
