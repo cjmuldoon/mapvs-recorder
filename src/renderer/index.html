@@ -39,6 +39,12 @@
           <span id="headerMapCount">0</span> maps
         </div>
 
+        <!-- Sign In button (shown when not connected) -->
+        <button class="btn btn-sm btn-primary" id="headerSignInBtn" title="Sign in to MapVS.com" style="display:flex;align-items:center;gap:4px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          Sign In
+        </button>
+
         <div class="connection-indicator" id="connectionStatus">
           <span class="connection-dot" id="connectionDot"></span>
           <span id="connectionLabel">Disconnected</span>
@@ -117,6 +123,15 @@
         Annotate
       </button>
     </nav>
+
+    <!-- Sign-in prompt banner (shown on tabs when not connected) -->
+    <div id="signInPromptBanner" class="hidden" style="background:var(--vs-primary-light, #EFF6FF);border-bottom:1px solid var(--vs-primary, #3B82F6);padding:8px 16px;display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:13px;color:var(--vs-primary, #3B82F6);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-2px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Sign in to save your progress and load existing flows.
+      </span>
+      <button class="btn btn-sm btn-primary" id="bannerSignInBtn" style="flex-shrink:0;">Sign In</button>
+    </div>
 
     <!-- Live Recording Banner -->
     <div id="liveRecordingBanner" class="hidden"></div>
@@ -1061,6 +1076,16 @@
 
       <!-- ==================== ANNOTATE TAB ==================== -->
       <div class="tab-panel" id="tab-annotate">
+
+        <!-- Web features note -->
+        <div style="background:var(--vs-bg-alt, #F9FAFB);border:1px solid var(--vs-border);border-radius:8px;padding:10px 14px;margin:12px 16px 0;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <span style="font-size:12px;color:var(--vs-text-muted);">
+            <strong>Tip:</strong> For zoom-to-region, side-by-side comparison, and AI-powered analysis, use the full web annotator.
+          </span>
+          <button class="btn btn-sm btn-ghost" id="openWebAnnotateBtn" style="flex-shrink:0;font-size:11px;">
+            Open in Browser
+          </button>
+        </div>
 
         <!-- Top Bar -->
         <div class="annotate-toolbar">

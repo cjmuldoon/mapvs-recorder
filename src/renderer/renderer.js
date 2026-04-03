@@ -748,6 +748,22 @@ function setupSyncControls() {
   window.api.auth.onTokenReceived(async () => {
     await checkConnection();
   });
+
+  // Header sign-in button
+  const headerSignIn = document.getElementById('headerSignInBtn');
+  if (headerSignIn) headerSignIn.addEventListener('click', () => window.api.auth.login());
+
+  // Banner sign-in button
+  const bannerSignIn = document.getElementById('bannerSignInBtn');
+  if (bannerSignIn) bannerSignIn.addEventListener('click', () => window.api.auth.login());
+
+  // Annotate web link
+  const openWebAnnotate = document.getElementById('openWebAnnotateBtn');
+  if (openWebAnnotate) openWebAnnotate.addEventListener('click', async () => {
+    const settings = await window.api.settings.get();
+    const baseUrl = settings.api_url?.replace('/api/v1', '') || 'https://mapvs.com';
+    window.api.system.openExternal(`${baseUrl}/video/`);
+  });
 }
 
 async function checkConnection() {
@@ -769,6 +785,12 @@ function updateConnectionUI() {
 
   document.getElementById('syncDisconnected').classList.toggle('hidden', state.connected);
   document.getElementById('syncConnected').classList.toggle('hidden', !state.connected);
+
+  // Show/hide header sign-in button and prompt banner
+  const signInBtn = document.getElementById('headerSignInBtn');
+  const banner = document.getElementById('signInPromptBanner');
+  if (signInBtn) signInBtn.style.display = state.connected ? 'none' : 'flex';
+  if (banner) banner.classList.toggle('hidden', state.connected);
 
   if (state.connected) {
     loadMaps();
