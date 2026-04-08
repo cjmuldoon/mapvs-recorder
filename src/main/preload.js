@@ -66,6 +66,8 @@ contextBridge.exposeInMainWorld('api', {
     getStats: () => ipcRenderer.invoke('sync:get-stats'),
     getMapPresence: (mapId) => ipcRenderer.invoke('sync:get-map-presence', mapId),
     request: (apiPath) => ipcRenderer.invoke('sync:request', apiPath),
+    post: (apiPath, body) => ipcRenderer.invoke('sync:post', apiPath, body),
+    uploadVideoFile: (filePath) => ipcRenderer.invoke('sync:upload-video-file', filePath),
     getMapRuns: (mapId) => ipcRenderer.invoke('sync:get-map-runs', mapId)
   },
 

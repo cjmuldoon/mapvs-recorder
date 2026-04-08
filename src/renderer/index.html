@@ -1142,6 +1142,37 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Export CSV
             </button>
+            <div style="width:1px;height:20px;background:var(--vs-border);margin:0 4px"></div>
+            <button class="btn btn-secondary btn-sm" id="annotatePoseAnalysisBtn" disabled title="Upload video and run pose estimation">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="15"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="10" y1="21" x2="12" y2="15"/><line x1="14" y1="21" x2="12" y2="15"/></svg>
+              Run Pose Analysis
+            </button>
+          </div>
+        </div>
+
+        <!-- Pose Analysis Overlay Toggles (hidden until pose data loaded) -->
+        <div class="annotate-toolbar" id="annotatePoseToolbar" style="display:none;border-top:0;padding-top:0">
+          <div class="annotate-toolbar-left" style="gap:6px">
+            <span class="text-xs text-muted font-semibold" style="margin-right:4px">POSE:</span>
+            <button class="btn btn-ghost btn-xs pose-toggle-btn active" id="poseToggleSkeleton" data-layer="skeleton" title="Toggle skeleton overlay">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="15"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="10" y1="21" x2="12" y2="15"/><line x1="14" y1="21" x2="12" y2="15"/></svg>
+              Skeleton
+            </button>
+            <button class="btn btn-ghost btn-xs pose-toggle-btn" id="poseToggleAngles" data-layer="angles" title="Toggle joint angles">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+              Angles
+            </button>
+            <button class="btn btn-ghost btn-xs pose-toggle-btn" id="poseToggleZones" data-layer="zones" title="Toggle risk zones">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Zones
+            </button>
+            <button class="btn btn-ghost btn-xs pose-toggle-btn" id="poseToggleTrails" data-layer="trails" title="Toggle motion trails">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Trails
+            </button>
+          </div>
+          <div class="annotate-toolbar-right">
+            <span class="text-xs font-semibold" id="poseRiskBadge" style="padding:3px 10px;border-radius:999px;background:#E5E7EB;color:#374151">--</span>
           </div>
         </div>
 
@@ -1157,6 +1188,15 @@
                 <div class="text-xs text-muted" style="margin-top:4px">Supported: MP4, MOV, AVI, MKV, WebM</div>
               </div>
               <video id="annotateVideo" style="display:none;width:100%;max-height:100%;background:#000;border-radius:var(--vs-radius)"></video>
+              <canvas id="annotatePoseCanvas" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5"></canvas>
+            </div>
+
+            <!-- Ergonomic Risk Timeline (hidden until pose data loaded) -->
+            <div id="annotatePoseTimeline" style="display:none;margin:0 0 4px 0">
+              <div style="display:flex;align-items:center;gap:6px;padding:2px 0">
+                <span class="text-xs text-muted" style="flex-shrink:0">Ergo Risk</span>
+                <canvas id="annotatePoseTimelineCanvas" style="width:100%;height:18px;border-radius:4px;cursor:pointer"></canvas>
+              </div>
             </div>
 
             <!-- Timeline Bar -->

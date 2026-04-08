@@ -611,6 +611,36 @@ function setupIPC() {
     }
   });
 
+  // Generic API POST handler
+  ipcMain.handle('sync:post', async (_event, apiPath, body) => {
+    const token = store.get('token');
+    const apiUrl = store.get('api_url');
+    if (!token) return { success: false, error: 'Not authenticated' };
+
+    try {
+      const api = require('../sync/api');
+      const data = await api.apiPost(token, apiUrl, apiPath, body);
+      return { success: true, data };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Upload a local video file to the API
+  ipcMain.handle('sync:upload-video-file', async (_event, filePath) => {
+    const token = store.get('token');
+    const apiUrl = store.get('api_url');
+    if (!token) return { success: false, error: 'Not authenticated' };
+
+    try {
+      const api = require('../sync/api');
+      const data = await api.uploadVideoFile(token, apiUrl, filePath);
+      return { success: true, data };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
   // Get runs for a map
   ipcMain.handle('sync:get-map-runs', async (_event, mapId) => {
     const token = store.get('token');

@@ -3143,6 +3143,12 @@ const annotateState = {
   pendingStartTime: null,
   linkedMapId: null,
   stageIdCounter: 0,
+  // Pose analysis state
+  poseData: null,          // { frames: [...], summary: {...} } from API
+  poseVideoId: null,       // video ID on server
+  poseVideoFilePath: null, // local file path of loaded video
+  poseLayers: { skeleton: true, angles: false, zones: false, trails: false },
+  poseAnalysisRunning: false,
 };
 
 function setupAnnotateTab() {
@@ -3184,6 +3190,17 @@ function setupAnnotateTab() {
   document.getElementById('annotateSaveMapBtn')?.addEventListener('click', annotateSaveAsMap);
   document.getElementById('annotateSaveRunBtn')?.addEventListener('click', annotateSaveAsRun);
   document.getElementById('annotateExportCsvBtn')?.addEventListener('click', annotateExportCsv);
+
+  // Pose Analysis
+  document.getElementById('annotatePoseAnalysisBtn')?.addEventListener('click', runPoseAnalysis);
+  document.querySelectorAll('.pose-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const layer = btn.dataset.layer;
+      annotateState.poseLayers[layer] = !annotateState.poseLayers[layer];
+      btn.classList.toggle('active', annotateState.poseLayers[layer]);
+      renderPoseOverlay();
+    });
+  });
 
   // Video time update
   video.addEventListener('timeupdate', annotateOnTimeUpdate);
@@ -3282,6 +3299,16 @@ function loadVideoForAnnotation(filePath) {
   video.style.display = 'block';
   if (placeholder) placeholder.style.display = 'none';
   annotateState.videoLoaded = true;
+
+  // Store the raw file path for pose analysis upload
+  annotateState.poseVideoFilePath = filePath.replace(/^file:\/\//, '');
+  annotateState.poseData = null;
+  annotateState.poseVideoId = null;
+  hidePoseOverlay();
+
+  // Enable pose analysis button
+  const poseBtn = document.getElementById('annotatePoseAnalysisBtn');
+  if (poseBtn) poseBtn.disabled = false;
 
   // Reset stages
   annotateState.stages = [];
@@ -3495,6 +3522,11 @@ function annotateOnTimeUpdate() {
   if (cursor && video.duration) {
     cursor.style.left = (video.currentTime / video.duration * 100) + '%';
   }
+  // Update pose overlay if pose data is loaded
+  if (annotateState.poseData) {
+    renderPoseOverlay();
+    renderPoseTimeline();
+  }
 }
 
 function updateAnnotateButtons() {
@@ -3609,6 +3641,358 @@ function formatAnnotateTime(seconds) {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return String(mins).padStart(2, '0') + ':' + secs.toFixed(3).padStart(6, '0');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POSE ANALYSIS — skeleton overlay, ergonomic timeline, risk indicators
+// ═══════════════════════════════════════════════════════════════════════════
+
+const POSE_CONNECTIONS = [
+  [11,12],[11,13],[13,15],[12,14],[14,16], // arms
+  [11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28], // torso + legs
+];
+
+const POSE_RISK_COLORS = {
+  low:       { bg: '#ECFDF5', fg: '#059669', label: 'Low Risk' },
+  medium:    { bg: '#FFF7ED', fg: '#D97706', label: 'Medium Risk' },
+  high:      { bg: '#FEF2F2', fg: '#DC2626', label: 'High Risk' },
+  very_high: { bg: '#FDF2F8', fg: '#BE185D', label: 'Very High Risk' },
+};
+
+function getRiskLevel(score) {
+  if (score == null) return 'low';
+  if (score <= 3) return 'low';
+  if (score <= 5) return 'medium';
+  if (score <= 7) return 'high';
+  return 'very_high';
+}
+
+function getRiskColor(level) {
+  return POSE_RISK_COLORS[level] || POSE_RISK_COLORS.low;
+}
+
+async function runPoseAnalysis() {
+  if (annotateState.poseAnalysisRunning) return;
+  if (!annotateState.videoLoaded || !annotateState.poseVideoFilePath) {
+    showToast('Load a video first', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('annotatePoseAnalysisBtn');
+  annotateState.poseAnalysisRunning = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Uploading...';
+  }
+
+  try {
+    // Step 1: Upload the video file if we don't have a server-side ID yet
+    if (!annotateState.poseVideoId) {
+      showToast('Uploading video for analysis...', 'info');
+      const uploadResult = await window.api.sync.uploadVideoFile(annotateState.poseVideoFilePath);
+      if (!uploadResult.success) throw new Error(uploadResult.error || 'Upload failed');
+      annotateState.poseVideoId = uploadResult.data.id || uploadResult.data.video_id;
+      if (!annotateState.poseVideoId) throw new Error('No video ID returned from upload');
+    }
+
+    // Step 2: Trigger pose analysis
+    if (btn) btn.textContent = 'Analysing...';
+    showToast('Running pose estimation...', 'info');
+    const videoId = annotateState.poseVideoId;
+    const analysisResult = await window.api.sync.post(`/video/${videoId}/pose-analysis`, { fps: 2 });
+    if (!analysisResult.success) throw new Error(analysisResult.error || 'Analysis failed');
+
+    // Step 3: Fetch the pose data
+    const poseResult = await window.api.sync.request(`/video/${videoId}/pose-data`);
+    if (!poseResult || poseResult.success === false) throw new Error(poseResult?.error || 'Failed to fetch pose data');
+
+    annotateState.poseData = poseResult.data || poseResult;
+    showPoseOverlay();
+    renderPoseOverlay();
+    renderPoseTimeline();
+    showToast('Pose analysis complete', 'success');
+  } catch (err) {
+    showToast('Pose analysis failed: ' + err.message, 'error');
+  } finally {
+    annotateState.poseAnalysisRunning = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="15"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="10" y1="21" x2="12" y2="15"/><line x1="14" y1="21" x2="12" y2="15"/></svg> Run Pose Analysis';
+    }
+  }
+}
+
+function showPoseOverlay() {
+  const toolbar = document.getElementById('annotatePoseToolbar');
+  const canvas = document.getElementById('annotatePoseCanvas');
+  const timeline = document.getElementById('annotatePoseTimeline');
+  if (toolbar) toolbar.style.display = '';
+  if (canvas) canvas.style.display = '';
+  if (timeline) timeline.style.display = '';
+}
+
+function hidePoseOverlay() {
+  const toolbar = document.getElementById('annotatePoseToolbar');
+  const canvas = document.getElementById('annotatePoseCanvas');
+  const timeline = document.getElementById('annotatePoseTimeline');
+  if (toolbar) toolbar.style.display = 'none';
+  if (canvas) canvas.style.display = 'none';
+  if (timeline) timeline.style.display = 'none';
+}
+
+function getPoseFrameAtTime(time) {
+  if (!annotateState.poseData || !annotateState.poseData.frames) return null;
+  const frames = annotateState.poseData.frames;
+  if (frames.length === 0) return null;
+  // Find the closest frame to the current time
+  let closest = frames[0];
+  let minDiff = Math.abs((closest.timestamp || 0) - time);
+  for (let i = 1; i < frames.length; i++) {
+    const diff = Math.abs((frames[i].timestamp || 0) - time);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = frames[i];
+    }
+  }
+  return closest;
+}
+
+function renderPoseOverlay() {
+  const canvas = document.getElementById('annotatePoseCanvas');
+  const video = document.getElementById('annotateVideo');
+  if (!canvas || !video || !annotateState.poseData) return;
+
+  // Match canvas size to video display size
+  const rect = video.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const frame = getPoseFrameAtTime(video.currentTime);
+  if (!frame || !frame.landmarks) return;
+
+  const landmarks = frame.landmarks;
+  // Video natural dimensions for coordinate mapping
+  const vw = video.videoWidth || 1;
+  const vh = video.videoHeight || 1;
+
+  // Calculate letterboxing offset (object-fit: contain)
+  const videoAspect = vw / vh;
+  const canvasAspect = canvas.width / canvas.height;
+  let drawW, drawH, offsetX, offsetY;
+  if (videoAspect > canvasAspect) {
+    drawW = canvas.width;
+    drawH = canvas.width / videoAspect;
+    offsetX = 0;
+    offsetY = (canvas.height - drawH) / 2;
+  } else {
+    drawH = canvas.height;
+    drawW = canvas.height * videoAspect;
+    offsetX = (canvas.width - drawW) / 2;
+    offsetY = 0;
+  }
+
+  function toCanvasX(normX) { return offsetX + normX * drawW; }
+  function toCanvasY(normY) { return offsetY + normY * drawH; }
+
+  const layers = annotateState.poseLayers;
+
+  // Draw motion trails
+  if (layers.trails && annotateState.poseData.frames) {
+    const currentIdx = annotateState.poseData.frames.indexOf(frame);
+    const trailLength = 8;
+    const startIdx = Math.max(0, currentIdx - trailLength);
+    const trailJoints = [15, 16, 27, 28]; // wrists and ankles
+    ctx.globalAlpha = 0.15;
+    for (const jointIdx of trailJoints) {
+      ctx.beginPath();
+      let started = false;
+      for (let i = startIdx; i <= currentIdx; i++) {
+        const f = annotateState.poseData.frames[i];
+        if (!f.landmarks || !f.landmarks[jointIdx]) continue;
+        const lm = f.landmarks[jointIdx];
+        const x = toCanvasX(lm.x);
+        const y = toCanvasY(lm.y);
+        if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+      }
+      ctx.strokeStyle = '#60A5FA';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Draw risk zones
+  if (layers.zones && frame.risk_score != null) {
+    const level = getRiskLevel(frame.risk_score);
+    const color = getRiskColor(level);
+    // Highlight body region with a semi-transparent overlay
+    if (level === 'high' || level === 'very_high') {
+      // Draw a subtle glow around the torso area
+      const torsoJoints = [11, 12, 23, 24];
+      const torsoPoints = torsoJoints.filter(j => landmarks[j]).map(j => ({
+        x: toCanvasX(landmarks[j].x),
+        y: toCanvasY(landmarks[j].y)
+      }));
+      if (torsoPoints.length >= 3) {
+        ctx.save();
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = color.fg;
+        ctx.beginPath();
+        ctx.moveTo(torsoPoints[0].x, torsoPoints[0].y);
+        for (let i = 1; i < torsoPoints.length; i++) ctx.lineTo(torsoPoints[i].x, torsoPoints[i].y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
+  // Draw skeleton
+  if (layers.skeleton) {
+    const riskLevel = frame.risk_score != null ? getRiskLevel(frame.risk_score) : 'low';
+    const lineColor = getRiskColor(riskLevel).fg;
+
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+
+    for (const [a, b] of POSE_CONNECTIONS) {
+      if (!landmarks[a] || !landmarks[b]) continue;
+      const vis = Math.min(landmarks[a].visibility || 1, landmarks[b].visibility || 1);
+      if (vis < 0.3) continue;
+      ctx.globalAlpha = Math.max(0.4, vis);
+      ctx.beginPath();
+      ctx.moveTo(toCanvasX(landmarks[a].x), toCanvasY(landmarks[a].y));
+      ctx.lineTo(toCanvasX(landmarks[b].x), toCanvasY(landmarks[b].y));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Draw joint dots
+    const jointIndices = new Set(POSE_CONNECTIONS.flat());
+    for (const idx of jointIndices) {
+      if (!landmarks[idx]) continue;
+      const vis = landmarks[idx].visibility || 1;
+      if (vis < 0.3) continue;
+      const x = toCanvasX(landmarks[idx].x);
+      const y = toCanvasY(landmarks[idx].y);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.globalAlpha = Math.max(0.5, vis);
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Draw angles
+  if (layers.angles && frame.angles) {
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const angleEntries = Object.entries(frame.angles);
+    for (const [jointName, angle] of angleEntries) {
+      // Map joint name to a landmark index for positioning
+      const jointMap = {
+        left_elbow: 13, right_elbow: 14,
+        left_shoulder: 11, right_shoulder: 12,
+        left_knee: 25, right_knee: 26,
+        left_hip: 23, right_hip: 24,
+        trunk_flexion: 11,
+      };
+      const lmIdx = jointMap[jointName];
+      if (lmIdx == null || !landmarks[lmIdx]) continue;
+      const x = toCanvasX(landmarks[lmIdx].x) + 18;
+      const y = toCanvasY(landmarks[lmIdx].y) - 10;
+      const deg = typeof angle === 'number' ? Math.round(angle) : angle;
+      // Background pill
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      const tw = ctx.measureText(deg + '\u00B0').width + 8;
+      ctx.beginPath();
+      ctx.roundRect(x - tw / 2, y - 8, tw, 16, 4);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(deg + '\u00B0', x, y);
+    }
+  }
+
+  // Update risk badge
+  updatePoseRiskBadge(frame);
+}
+
+function updatePoseRiskBadge(frame) {
+  const badge = document.getElementById('poseRiskBadge');
+  if (!badge) return;
+  if (!frame || frame.risk_score == null) {
+    badge.textContent = '--';
+    badge.style.background = '#E5E7EB';
+    badge.style.color = '#374151';
+    return;
+  }
+  const level = getRiskLevel(frame.risk_score);
+  const rc = getRiskColor(level);
+  badge.textContent = rc.label + ' (' + frame.risk_score.toFixed(1) + ')';
+  badge.style.background = rc.bg;
+  badge.style.color = rc.fg;
+}
+
+function renderPoseTimeline() {
+  const container = document.getElementById('annotatePoseTimeline');
+  const canvas = document.getElementById('annotatePoseTimelineCanvas');
+  const video = document.getElementById('annotateVideo');
+  if (!canvas || !video || !annotateState.poseData || !annotateState.poseData.frames) return;
+  if (container) container.style.display = '';
+
+  const frames = annotateState.poseData.frames;
+  if (frames.length === 0) return;
+
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * (window.devicePixelRatio || 1);
+  canvas.height = rect.height * (window.devicePixelRatio || 1);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+  const w = rect.width;
+  const h = rect.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const duration = video.duration || 1;
+
+  // Draw risk-colored segments
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i];
+    const nextT = i < frames.length - 1 ? frames[i + 1].timestamp : duration;
+    const x = (f.timestamp / duration) * w;
+    const segW = Math.max(1, ((nextT - f.timestamp) / duration) * w);
+    const level = getRiskLevel(f.risk_score);
+    ctx.fillStyle = getRiskColor(level).fg;
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(x, 0, segW, h);
+  }
+  ctx.globalAlpha = 1;
+
+  // Draw playhead
+  const playheadX = (video.currentTime / duration) * w;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(playheadX - 1, 0, 2, h);
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(playheadX - 1, 0, 2, h);
+
+  // Click handler for seeking
+  canvas.onclick = (e) => {
+    const clickRect = canvas.getBoundingClientRect();
+    const pct = (e.clientX - clickRect.left) / clickRect.width;
+    video.currentTime = pct * video.duration;
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

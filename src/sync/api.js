@@ -359,6 +359,74 @@ async function getMapRuns(token, apiUrl, mapId) {
   return data.runs || data.data || data || [];
 }
 
+/**
+ * POST a JSON body to an API endpoint.
+ * @param {string} token - Bearer token
+ * @param {string} apiUrl - Base API URL
+ * @param {string} apiPath - API path (e.g. /video/123/pose-analysis)
+ * @param {object} body - JSON body to send
+ * @returns {Promise<any>}
+ */
+async function apiPost(token, apiUrl, apiPath, body = {}) {
+  const url = `${apiUrl}${apiPath}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body),
+    timeout: 120000
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`API POST failed: ${response.status} ${text}`);
+  }
+
+  const data = await response.json();
+  return data.data !== undefined ? data.data : data;
+}
+
+/**
+ * Upload a local video file to the API via multipart/form-data.
+ * @param {string} token - Bearer token
+ * @param {string} apiUrl - Base API URL
+ * @param {string} filePath - Absolute path to the local video file
+ * @returns {Promise<any>} - Upload response with video ID
+ */
+async function uploadVideoFile(token, apiUrl, filePath) {
+  const fs = require('fs');
+  const path = require('path');
+  const FormData = require('form-data');
+
+  const fileName = path.basename(filePath);
+  const fileStream = fs.createReadStream(filePath);
+  const form = new FormData();
+  form.append('video', fileStream, fileName);
+  form.append('skip_analysis', '1');
+
+  const url = `${apiUrl}/video/upload`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      ...form.getHeaders()
+    },
+    body: form,
+    timeout: 300000
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Video upload failed: ${response.status} ${text}`);
+  }
+
+  const data = await response.json();
+  return data.data !== undefined ? data.data : data;
+}
+
 module.exports = {
   testConnection,
   getMaps,
@@ -370,5 +438,7 @@ module.exports = {
   getStats,
   getMapPresence,
   apiRequest,
+  apiPost,
+  uploadVideoFile,
   getMapRuns
 };
