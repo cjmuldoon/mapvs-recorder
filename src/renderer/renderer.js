@@ -4002,15 +4002,16 @@ function renderPoseTimeline() {
 let mapsData = [];
 let selectedMapId = null;
 
-async function loadMaps() {
+async function loadMapsList() {
   const container = document.getElementById('mapsListContainer');
   try {
     const result = await window.api.sync.getMaps();
-    if (!result || !result.maps) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg></div><h3 class="empty-state-title">Not Connected</h3><p class="empty-state-text">Sign in and sync to see your maps.</p></div>';
+    const maps = result.maps || result.data || [];
+    if (!result || (!result.success && !result.maps) || maps.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg></div><h3 class="empty-state-title">No Maps</h3><p class="empty-state-text">Create a map from a recording or on the web.</p></div>';
       return;
     }
-    mapsData = result.maps;
+    mapsData = maps;
     renderMapList();
   } catch (err) {
     container.innerHTML = '<div class="text-sm text-muted" style="padding:20px;text-align:center">Failed to load maps. Check connection.</div>';
@@ -4182,7 +4183,7 @@ function escapeHtml(str) {
 // Wire up Maps tab buttons
 document.addEventListener('DOMContentLoaded', () => {
   const refreshBtn = document.getElementById('refreshMapsBtn');
-  if (refreshBtn) refreshBtn.addEventListener('click', loadMaps);
+  if (refreshBtn) refreshBtn.addEventListener('click', loadMapsList);
 
   const openWebBtn = document.getElementById('openMapsWebBtn');
   if (openWebBtn) openWebBtn.addEventListener('click', async () => {
@@ -4201,7 +4202,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const mapsTabBtn = document.querySelector('[data-tab="maps"]');
   if (mapsTabBtn) {
     mapsTabBtn.addEventListener('click', () => {
-      if (!mapsData.length) loadMaps();
+      if (!mapsData.length) loadMapsList();
     });
   }
 });
