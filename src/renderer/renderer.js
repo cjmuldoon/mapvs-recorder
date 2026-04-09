@@ -3334,15 +3334,130 @@ async function useLastRecording() {
     const session = result.session;
     if (session.videoPath) {
       loadVideoForAnnotation(session.videoPath);
-    } else if (session.steps && session.steps.length > 0 && session.steps[0].screenshotPath) {
-      // No video — load as screenshot-based annotation
-      showToast('Last recording is screenshot-based. Open a video file instead.', 'warning');
+    } else if (session.steps && session.steps.length > 0) {
+      // Screenshot-based recording — load as frame viewer
+      loadScreenshotsForAnnotation(session);
     } else {
-      showToast('No video found in last recording session', 'warning');
+      showToast('No data found in last recording session', 'warning');
     }
   } catch (err) {
     showToast('Failed to load last recording: ' + err.message, 'error');
   }
+}
+
+function loadScreenshotsForAnnotation(session) {
+  const steps = session.steps || [];
+  const screenshots = steps.filter(s => s.screenshotPath).map((s, i) => ({
+    path: s.screenshotPath,
+    name: s.name || s.windowTitle || `Step ${i + 1}`,
+    notes: s.notes || '',
+    duration: s.duration || 0,
+    valueAdd: s.valueAdd !== false,
+    resource: s.resource || '',
+    timestamp: s.timestamp || 0,
+  }));
+
+  if (screenshots.length === 0) {
+    showToast('No screenshots in recording', 'warning');
+    return;
+  }
+
+  // Hide video, show image viewer
+  const placeholder = document.getElementById('annotateVideoPlaceholder');
+  const video = document.getElementById('annotateVideo');
+  const wrapper = document.getElementById('annotateVideoWrapper');
+
+  if (video) video.style.display = 'none';
+  if (placeholder) placeholder.style.display = 'none';
+
+  // Create or reuse image element
+  let img = wrapper.querySelector('#annotateScreenshotImg');
+  if (!img) {
+    img = document.createElement('img');
+    img.id = 'annotateScreenshotImg';
+    img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--vs-radius);';
+    wrapper.appendChild(img);
+  }
+
+  let currentIdx = 0;
+
+  function showScreenshot(idx) {
+    if (idx < 0 || idx >= screenshots.length) return;
+    currentIdx = idx;
+    const s = screenshots[idx];
+    img.src = 'file://' + s.path;
+    img.style.display = 'block';
+
+    // Update timestamp display
+    const tsEl = document.getElementById('annotateTimestamp');
+    if (tsEl) tsEl.textContent = `${idx + 1} / ${screenshots.length}`;
+    const frameEl = document.getElementById('annotateFrameNum');
+    if (frameEl) frameEl.textContent = s.name;
+
+    // Sync draw canvas
+    img.onload = () => {
+      const canvas = document.getElementById('annotateDrawCanvas');
+      if (canvas) {
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.style.display = 'block';
+        renderAnnotations();
+      }
+      // Show drawing toolbar
+      const toolbar = document.getElementById('annotateDrawToolbar');
+      if (toolbar) toolbar.classList.add('visible');
+    };
+  }
+
+  showScreenshot(0);
+
+  // Pre-populate stages from recording steps
+  annotateState.stages = screenshots.map((s, i) => ({
+    name: s.name,
+    startTime: i,
+    endTime: i + 1,
+    duration: s.duration,
+    valueAdd: s.valueAdd,
+    notes: s.notes,
+    resource: s.resource,
+  }));
+  annotateState.videoLoaded = true;
+  renderAnnotateStages();
+
+  // Override play/pause to navigate screenshots
+  const playBtn = document.getElementById('annotatePlayBtn');
+  if (playBtn) {
+    playBtn.onclick = null;
+    let slideInterval = null;
+    playBtn.addEventListener('click', () => {
+      if (slideInterval) {
+        clearInterval(slideInterval);
+        slideInterval = null;
+        updateAnnotatePlayIcon(false);
+      } else {
+        slideInterval = setInterval(() => {
+          if (currentIdx < screenshots.length - 1) {
+            showScreenshot(currentIdx + 1);
+          } else {
+            clearInterval(slideInterval);
+            slideInterval = null;
+            updateAnnotatePlayIcon(false);
+          }
+        }, 2000);
+        updateAnnotatePlayIcon(true);
+      }
+    });
+  }
+
+  // Arrow key navigation
+  const navHandler = (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'ArrowRight') showScreenshot(currentIdx + 1);
+    if (e.key === 'ArrowLeft') showScreenshot(currentIdx - 1);
+  };
+  document.addEventListener('keydown', navHandler);
+
+  showToast(`Loaded ${screenshots.length} screenshots from recording`, 'success');
 }
 
 function annotateTogglePlay() {
