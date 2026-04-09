@@ -2861,7 +2861,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 280px;
+  min-height: 200px;
   position: relative;
   overflow: hidden;
 }
@@ -3075,15 +3075,24 @@ html, body {
   user-select: none;
 }
 
-/* Annotate tab layout fix — override default tab-panel constraints */
+/* Annotate tab layout fix — fill viewport, override default constraints */
 #tab-annotate {
   display: none;
   flex-direction: column;
   max-width: none;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 #tab-annotate.active {
   display: flex;
   animation: tabFadeSlideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Let tab-content stretch for annotate */
+.tab-content:has(#tab-annotate.active) {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Maps Tab — Metric Cards ── */

@@ -4055,7 +4055,11 @@ function renderMapList() {
   }).join('');
 }
 
+// Expose to onclick handlers in dynamic HTML
+window.showMapDetail = showMapDetail;
+
 async function showMapDetail(mapId) {
+  console.log('[Maps] showMapDetail called with mapId:', mapId);
   selectedMapId = mapId;
   document.getElementById('mapsListContainer').classList.add('hidden');
   document.getElementById('mapDetailPanel').classList.remove('hidden');
