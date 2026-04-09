@@ -4032,10 +4032,10 @@ function renderMapList() {
     return;
   }
   container.innerHTML = mapsData.map(m => {
-    const stages = m.stages_count || m.stage_count || 0;
+    const stages = m.stages_count || m.stage_count || m.stages?.length || 0;
     const pce = m.pce ? m.pce.toFixed(1) + '%' : '—';
     return `
-      <div class="card card-interactive" onclick="showMapDetail(${m.id})" style="margin-bottom:8px;padding:14px;cursor:pointer;">
+      <div class="card card-interactive" data-map-id="${m.id}" style="margin-bottom:8px;padding:14px;cursor:pointer;">
         <div style="display:flex;justify-content:space-between;align-items:start;">
           <div>
             <div class="font-semibold">${escapeHtml(m.name)}</div>
@@ -4053,6 +4053,14 @@ function renderMapList() {
         </div>
       </div>`;
   }).join('');
+
+  // Event delegation for map clicks
+  container.querySelectorAll('[data-map-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      const mapId = parseInt(el.getAttribute('data-map-id'), 10);
+      showMapDetail(mapId);
+    });
+  });
 }
 
 async function showMapDetail(mapId) {
