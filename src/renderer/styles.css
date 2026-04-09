@@ -3131,3 +3131,15 @@ html, body {
 .data-table th { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--vs-border); color: var(--vs-text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
 .data-table td { padding: 6px 10px; border-bottom: 1px solid var(--vs-border-light, var(--vs-border)); }
 .data-table .text-right { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Drawing Annotation Tools ── */
+.draw-tool-btn { min-width: 28px; height: 26px; }
+.draw-tool-btn.active { background: var(--vs-primary) !important; color: #fff !important; }
+.draw-color-btn {
+  width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent;
+  cursor: pointer; transition: border-color 0.15s, transform 0.1s;
+}
+.draw-color-btn:hover { transform: scale(1.15); }
+.draw-color-btn.active { border-color: var(--vs-primary); box-shadow: 0 0 0 2px var(--vs-primary); }
+#annotateDrawToolbar { display: none; }
+#annotateDrawToolbar.visible { display: flex !important; }

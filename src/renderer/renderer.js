@@ -4233,3 +4233,273 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Expose functions needed by dynamic onclick handlers
 window.showMapDetail = showMapDetail;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DRAWING ANNOTATIONS — Screen recording review tools
+// ═══════════════════════════════════════════════════════════════════════════
+
+const drawState = {
+  tool: 'select',
+  color: '#EF4444',
+  lineWidth: 3,
+  annotations: [],  // [{type, points, color, lineWidth, text, timestamp}]
+  current: null,     // annotation being drawn
+  visible: true,
+  stepNumber: 1,
+  canvas: null,
+  ctx: null,
+};
+
+function initDrawTools() {
+  const canvas = document.getElementById('annotateDrawCanvas');
+  const toolbar = document.getElementById('annotateDrawToolbar');
+  if (!canvas || !toolbar) return;
+
+  drawState.canvas = canvas;
+  drawState.ctx = canvas.getContext('2d');
+
+  // Show toolbar when video loads
+  const video = document.getElementById('annotateVideo');
+  if (video) {
+    const obs = new MutationObserver(() => {
+      if (video.style.display !== 'none') {
+        toolbar.classList.add('visible');
+        canvas.style.display = 'block';
+        syncDrawCanvas();
+      }
+    });
+    obs.observe(video, { attributes: true, attributeFilter: ['style'] });
+  }
+
+  // Tool buttons
+  toolbar.querySelectorAll('.draw-tool-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      toolbar.querySelectorAll('.draw-tool-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      drawState.tool = btn.dataset.tool;
+      canvas.style.pointerEvents = drawState.tool === 'select' ? 'none' : 'auto';
+      canvas.style.cursor = drawState.tool === 'text' ? 'text' : drawState.tool === 'select' ? 'default' : 'crosshair';
+    });
+  });
+
+  // Color buttons
+  toolbar.querySelectorAll('.draw-color-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      toolbar.querySelectorAll('.draw-color-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      drawState.color = btn.dataset.color;
+    });
+  });
+
+  // Line width
+  const lwSelect = document.getElementById('drawLineWidth');
+  if (lwSelect) lwSelect.addEventListener('change', () => { drawState.lineWidth = parseInt(lwSelect.value, 10); });
+
+  // Undo / Clear / Toggle
+  document.getElementById('drawUndoBtn')?.addEventListener('click', () => {
+    drawState.annotations.pop();
+    renderAnnotations();
+  });
+  document.getElementById('drawClearBtn')?.addEventListener('click', () => {
+    if (confirm('Clear all annotations?')) { drawState.annotations = []; drawState.stepNumber = 1; renderAnnotations(); }
+  });
+  document.getElementById('drawToggleBtn')?.addEventListener('click', () => {
+    drawState.visible = !drawState.visible;
+    renderAnnotations();
+  });
+
+  // Canvas mouse events
+  let startX, startY, points = [];
+  canvas.addEventListener('mousedown', (e) => {
+    if (drawState.tool === 'select') return;
+    const rect = canvas.getBoundingClientRect();
+    startX = (e.clientX - rect.left) * (canvas.width / rect.width);
+    startY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+    if (drawState.tool === 'text') {
+      const text = prompt('Enter annotation text:');
+      if (text) {
+        const v = document.getElementById('annotateVideo');
+        drawState.annotations.push({
+          type: 'text', x: startX, y: startY, text,
+          color: drawState.color, lineWidth: drawState.lineWidth,
+          timestamp: v ? v.currentTime : 0,
+        });
+        renderAnnotations();
+      }
+      return;
+    }
+    if (drawState.tool === 'click') {
+      const v = document.getElementById('annotateVideo');
+      drawState.annotations.push({
+        type: 'click', x: startX, y: startY,
+        color: drawState.color, timestamp: v ? v.currentTime : 0,
+      });
+      renderAnnotations();
+      return;
+    }
+    if (drawState.tool === 'number') {
+      const v = document.getElementById('annotateVideo');
+      drawState.annotations.push({
+        type: 'number', x: startX, y: startY, num: drawState.stepNumber++,
+        color: drawState.color, timestamp: v ? v.currentTime : 0,
+      });
+      renderAnnotations();
+      return;
+    }
+    if (drawState.tool === 'freehand') points = [{x: startX, y: startY}];
+    drawState.current = { type: drawState.tool, x1: startX, y1: startY, x2: startX, y2: startY, color: drawState.color, lineWidth: drawState.lineWidth, points };
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (!drawState.current) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    drawState.current.x2 = x;
+    drawState.current.y2 = y;
+    if (drawState.tool === 'freehand') drawState.current.points.push({x, y});
+    renderAnnotations();
+    drawShape(drawState.ctx, drawState.current);
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    if (!drawState.current) return;
+    const v = document.getElementById('annotateVideo');
+    drawState.current.timestamp = v ? v.currentTime : 0;
+    drawState.annotations.push(drawState.current);
+    drawState.current = null;
+    renderAnnotations();
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+    const activeTab = document.querySelector('.tab-panel.active');
+    if (!activeTab || activeTab.id !== 'tab-annotate') return;
+    const key = e.key.toLowerCase();
+    const toolMap = { v: 'select', a: 'arrow', r: 'rect', c: 'circle', f: 'freehand', t: 'text', k: 'click', h: 'highlight', b: 'blur', n: 'number' };
+    if (toolMap[key] && !e.ctrlKey && !e.metaKey) {
+      toolbar.querySelectorAll('.draw-tool-btn').forEach(b => b.classList.remove('active'));
+      const btn = toolbar.querySelector(`[data-tool="${toolMap[key]}"]`);
+      if (btn) { btn.classList.add('active'); drawState.tool = toolMap[key]; canvas.style.pointerEvents = drawState.tool === 'select' ? 'none' : 'auto'; }
+    }
+    if ((e.ctrlKey || e.metaKey) && key === 'z') { drawState.annotations.pop(); renderAnnotations(); }
+  });
+
+  window.addEventListener('resize', syncDrawCanvas);
+}
+
+function syncDrawCanvas() {
+  const canvas = drawState.canvas;
+  const video = document.getElementById('annotateVideo');
+  if (!canvas || !video) return;
+  canvas.width = video.videoWidth || video.clientWidth || 1280;
+  canvas.height = video.videoHeight || video.clientHeight || 720;
+}
+
+function renderAnnotations() {
+  const { ctx, canvas, annotations, visible } = drawState;
+  if (!ctx || !canvas) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!visible) return;
+  annotations.forEach(a => drawShape(ctx, a));
+}
+
+function drawShape(ctx, a) {
+  if (!a) return;
+  ctx.save();
+  ctx.strokeStyle = a.color || '#EF4444';
+  ctx.fillStyle = a.color || '#EF4444';
+  ctx.lineWidth = a.lineWidth || 3;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  switch (a.type) {
+    case 'arrow': {
+      const dx = a.x2 - a.x1, dy = a.y2 - a.y1;
+      const angle = Math.atan2(dy, dx);
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const headLen = Math.min(16, len * 0.3);
+      ctx.beginPath(); ctx.moveTo(a.x1, a.y1); ctx.lineTo(a.x2, a.y2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(a.x2, a.y2);
+      ctx.lineTo(a.x2 - headLen * Math.cos(angle - 0.4), a.y2 - headLen * Math.sin(angle - 0.4));
+      ctx.moveTo(a.x2, a.y2);
+      ctx.lineTo(a.x2 - headLen * Math.cos(angle + 0.4), a.y2 - headLen * Math.sin(angle + 0.4));
+      ctx.stroke();
+      break;
+    }
+    case 'rect':
+      ctx.strokeRect(a.x1, a.y1, a.x2 - a.x1, a.y2 - a.y1);
+      break;
+    case 'circle': {
+      const rx = Math.abs(a.x2 - a.x1) / 2, ry = Math.abs(a.y2 - a.y1) / 2;
+      const cx = (a.x1 + a.x2) / 2, cy = (a.y1 + a.y2) / 2;
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+      break;
+    }
+    case 'freehand':
+      if (a.points && a.points.length > 1) {
+        ctx.beginPath(); ctx.moveTo(a.points[0].x, a.points[0].y);
+        a.points.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.stroke();
+      }
+      break;
+    case 'highlight':
+      ctx.globalAlpha = 0.25;
+      ctx.fillRect(a.x1, a.y1, a.x2 - a.x1, a.y2 - a.y1);
+      ctx.globalAlpha = 1;
+      break;
+    case 'blur': {
+      const w = Math.abs(a.x2 - a.x1), h = Math.abs(a.y2 - a.y1);
+      const sx = Math.min(a.x1, a.x2), sy = Math.min(a.y1, a.y2);
+      ctx.fillStyle = '#888888';
+      ctx.globalAlpha = 0.7;
+      // Pixelated grid for blur effect
+      const gridSize = 8;
+      for (let gx = sx; gx < sx + w; gx += gridSize) {
+        for (let gy = sy; gy < sy + h; gy += gridSize) {
+          ctx.fillStyle = (Math.floor(gx / gridSize) + Math.floor(gy / gridSize)) % 2 ? '#666' : '#999';
+          ctx.fillRect(gx, gy, gridSize, gridSize);
+        }
+      }
+      ctx.globalAlpha = 1;
+      break;
+    }
+    case 'text':
+      ctx.font = `bold ${Math.max(14, (a.lineWidth || 3) * 6)}px system-ui, -apple-system, sans-serif`;
+      // Background pill
+      const metrics = ctx.measureText(a.text);
+      const pad = 6, th = parseInt(ctx.font) + pad * 2;
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      const bx = a.x - pad, by = a.y - th + pad, bw = metrics.width + pad * 2, bh = th;
+      ctx.roundRect(bx, by, bw, bh, 4); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = a.color || '#fff';
+      ctx.fillText(a.text, a.x, a.y);
+      break;
+    case 'click':
+      // Concentric rings
+      ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(a.x, a.y, 20, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(a.x, a.y, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(a.x, a.y, 5, 0, Math.PI * 2); ctx.fill();
+      break;
+    case 'number': {
+      const r = 14;
+      ctx.beginPath(); ctx.arc(a.x, a.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(a.num || '?'), a.x, a.y);
+      ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+      break;
+    }
+  }
+  ctx.restore();
+}
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', initDrawTools);
