@@ -4004,17 +4004,24 @@ let selectedMapId = null;
 
 async function loadMapsList() {
   const container = document.getElementById('mapsListContainer');
+  const refreshBtn = document.getElementById('refreshMapsBtn');
+  if (refreshBtn) { refreshBtn.textContent = 'Loading...'; refreshBtn.disabled = true; }
   try {
     const result = await window.api.sync.getMaps();
     const maps = result.maps || result.data || [];
-    if (!result || (!result.success && !result.maps) || maps.length === 0) {
+    if (!maps || !Array.isArray(maps) || maps.length === 0) {
       container.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg></div><h3 class="empty-state-title">No Maps</h3><p class="empty-state-text">Create a map from a recording or on the web.</p></div>';
       return;
     }
     mapsData = maps;
+    // Update header map count
+    const countEl = document.getElementById('headerMapCount');
+    if (countEl) countEl.textContent = maps.length;
     renderMapList();
   } catch (err) {
     container.innerHTML = '<div class="text-sm text-muted" style="padding:20px;text-align:center">Failed to load maps. Check connection.</div>';
+  } finally {
+    if (refreshBtn) { refreshBtn.textContent = 'Refresh'; refreshBtn.disabled = false; }
   }
 }
 
@@ -4055,9 +4062,17 @@ async function showMapDetail(mapId) {
 
   // Fetch map detail from API
   try {
-    const result = await window.api.sync.request(`/maps/${mapId}`);
-    if (!result || result.status === 'error') throw new Error('Failed');
-    const map = result.data || result;
+    const rawResult = await window.api.sync.request(`/maps/${mapId}`);
+    // Handle various response shapes: {success,data:{data:{...}}}, {data:{...}}, {status,data:{...}}
+    let map;
+    if (rawResult?.success && rawResult.data) {
+      map = rawResult.data.data || rawResult.data;
+    } else if (rawResult?.data) {
+      map = rawResult.data;
+    } else {
+      map = rawResult;
+    }
+    if (!map || map.status === 'error') throw new Error('Failed');
 
     document.getElementById('mapDetailTitle').textContent = map.name || '';
     document.getElementById('mapDetailDesc').textContent = map.description || '';

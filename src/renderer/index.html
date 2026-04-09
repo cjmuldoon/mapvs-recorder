@@ -1110,16 +1110,6 @@
       <!-- ==================== ANNOTATE TAB ==================== -->
       <div class="tab-panel" id="tab-annotate">
 
-        <!-- Web features note -->
-        <div style="background:var(--vs-bg-alt, #F9FAFB);border:1px solid var(--vs-border);border-radius:8px;padding:10px 14px;margin:12px 16px 0;display:flex;align-items:center;justify-content:space-between;gap:12px;">
-          <span style="font-size:12px;color:var(--vs-text-muted);">
-            <strong>Tip:</strong> For zoom-to-region, side-by-side comparison, and AI-powered analysis, use the full web annotator.
-          </span>
-          <button class="btn btn-sm btn-ghost" id="openWebAnnotateBtn" style="flex-shrink:0;font-size:11px;">
-            Open in Browser
-          </button>
-        </div>
-
         <!-- Top Bar -->
         <div class="annotate-toolbar">
           <div class="annotate-toolbar-left">
@@ -1145,7 +1135,12 @@
             <div style="width:1px;height:20px;background:var(--vs-border);margin:0 4px"></div>
             <button class="btn btn-secondary btn-sm" id="annotatePoseAnalysisBtn" disabled title="Upload video and run pose estimation">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="15"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="10" y1="21" x2="12" y2="15"/><line x1="14" y1="21" x2="12" y2="15"/></svg>
-              Run Pose Analysis
+              Pose Analysis
+            </button>
+            <div style="width:1px;height:20px;background:var(--vs-border);margin:0 4px"></div>
+            <button class="btn btn-ghost btn-sm" id="openWebAnnotateBtn" title="Full annotator with comparison, zoom, AI analysis">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Web Annotator
             </button>
           </div>
         </div>
