@@ -46,8 +46,8 @@ async function getMaps(token, apiUrl) {
     throw new Error(`Failed to fetch maps: ${response.status} ${text}`);
   }
 
-  const data = await response.json();
-  return data.maps || data || [];
+  const json = await response.json();
+  return json.data || json.maps || json || [];
 }
 
 /**
