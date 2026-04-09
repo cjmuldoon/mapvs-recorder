@@ -4055,9 +4055,6 @@ function renderMapList() {
   }).join('');
 }
 
-// Expose to onclick handlers in dynamic HTML
-window.showMapDetail = showMapDetail;
-
 async function showMapDetail(mapId) {
   console.log('[Maps] showMapDetail called with mapId:', mapId);
   selectedMapId = mapId;
@@ -4225,3 +4222,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+// Expose functions needed by dynamic onclick handlers
+window.showMapDetail = showMapDetail;
