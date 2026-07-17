@@ -21,7 +21,7 @@ class Recorder {
     this.interval = interval;
     this.storagePath = path.join(storagePath, this.sessionId);
     this.captureRegionBounds = captureRegionBounds;
-    this.idleThreshold = idleThreshold; // seconds — Feature 2
+    this.idleThreshold = idleThreshold; // seconds - Feature 2
     this.displayId = displayId; // Feature 3: specific display to capture
     this.followActiveWindow = followActiveWindow; // Feature 3: follow active window across monitors
     this.quality = quality; // Screenshot quality: 'low' | 'medium' | 'high'

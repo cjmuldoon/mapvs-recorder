@@ -1,5 +1,5 @@
 /**
- * ValueStream Recorder — Recording Comparison Module
+ * ValueStream Recorder - Recording Comparison Module
  * Compares two recordings side-by-side for improvement analysis.
  */
 

@@ -88,7 +88,7 @@
   "review.select_map_hint": "Wahlen Sie eine Map, um Laufe anzuzeigen",
   "review.quick_simulate": "Schnellsimulation",
   "review.run_simulation": "Simulation starten",
-  "review.simulation_desc": "Monte-Carlo-Simulation mit zufalligen Variationen — lauft lokal, kein Server erforderlich.",
+  "review.simulation_desc": "Monte-Carlo-Simulation mit zufalligen Variationen - lauft lokal, kein Server erforderlich.",
   "review.predicted_lead_time": "Vorhergesagte Durchlaufzeit",
   "review.predicted_pce": "Vorhergesagte PZE",
   "review.sim_bottleneck": "Engpass",
@@ -157,7 +157,7 @@
   "settings.about": "Uber",
   "settings.version": "Version",
   "settings.check_updates": "Nach Updates suchen",
-  "settings.update_ready": "Update bereit — zum Anwenden neu starten",
+  "settings.update_ready": "Update bereit - zum Anwenden neu starten",
   "settings.restart_now": "Jetzt neu starten",
 
   "common.save": "Speichern",

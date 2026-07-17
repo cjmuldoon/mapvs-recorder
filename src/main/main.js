@@ -80,7 +80,7 @@ function registerShortcuts() {
 }
 
 function setupIPC() {
-  // Auth handlers — uses a local HTTP server to receive the OAuth callback
+  // Auth handlers - uses a local HTTP server to receive the OAuth callback
   ipcMain.handle('auth:login', async () => {
     const apiUrl = store.get('api_url', 'https://mapvs.com/api/v1');
     const baseUrl = apiUrl.replace('/api/v1', '');

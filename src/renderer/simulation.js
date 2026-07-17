@@ -1,6 +1,6 @@
 /**
- * ValueStream Recorder — Local Process Simulation (Monte Carlo)
- * Lightweight client-side simulation — no server needed.
+ * ValueStream Recorder - Local Process Simulation (Monte Carlo)
+ * Lightweight client-side simulation - no server needed.
  * Runs entirely in the renderer process.
  */
 

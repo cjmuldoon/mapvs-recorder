@@ -1,7 +1,7 @@
-// __tests__/preload.test.js — mapvs-recorder
+// __tests__/preload.test.js - mapvs-recorder
 // Tests for src/main/preload.js (IPC security bridge)
 //
-// preload.js calls contextBridge.exposeInMainWorld — we verify the API shape
+// preload.js calls contextBridge.exposeInMainWorld - we verify the API shape
 // and that each function invokes the correct ipcRenderer channel.
 
 const mockIpcRenderer = {
@@ -18,13 +18,13 @@ jest.mock('electron', () => ({
   ipcRenderer: mockIpcRenderer,
 }));
 
-// Load preload.js — executes immediately, calling exposeInMainWorld
+// Load preload.js - executes immediately, calling exposeInMainWorld
 require('../src/main/preload');
 
 // Extract the exposed api object from the exposeInMainWorld call
 const [[, exposedApi]] = mockContextBridge.exposeInMainWorld.mock.calls;
 
-describe('preload — exposeInMainWorld', () => {
+describe('preload - exposeInMainWorld', () => {
   it('exposes api to the main world', () => {
     expect(mockContextBridge.exposeInMainWorld).toHaveBeenCalledTimes(1);
     expect(mockContextBridge.exposeInMainWorld).toHaveBeenCalledWith('api', expect.any(Object));
@@ -42,7 +42,7 @@ describe('preload — exposeInMainWorld', () => {
   });
 });
 
-describe('preload — auth namespace', () => {
+describe('preload - auth namespace', () => {
   beforeEach(() => mockIpcRenderer.invoke.mockClear());
 
   it('auth.login invokes auth:login', async () => {
@@ -72,7 +72,7 @@ describe('preload — auth namespace', () => {
   });
 });
 
-describe('preload — capture namespace', () => {
+describe('preload - capture namespace', () => {
   beforeEach(() => mockIpcRenderer.invoke.mockClear());
 
   it('capture.screenshot invokes capture:screenshot', async () => {
@@ -123,7 +123,7 @@ describe('preload — capture namespace', () => {
   });
 });
 
-describe('preload — recording namespace', () => {
+describe('preload - recording namespace', () => {
   beforeEach(() => mockIpcRenderer.invoke.mockClear());
 
   it('recording.start invokes recording:start with mode', async () => {
@@ -171,7 +171,7 @@ describe('preload — recording namespace', () => {
   });
 });
 
-describe('preload — sync namespace', () => {
+describe('preload - sync namespace', () => {
   beforeEach(() => mockIpcRenderer.invoke.mockClear());
 
   it('sync.upload invokes sync:upload with data', async () => {
@@ -206,7 +206,7 @@ describe('preload — sync namespace', () => {
   });
 });
 
-describe('preload — settings namespace', () => {
+describe('preload - settings namespace', () => {
   beforeEach(() => mockIpcRenderer.invoke.mockClear());
 
   it('settings.get invokes settings:get', async () => {
@@ -226,7 +226,7 @@ describe('preload — settings namespace', () => {
   });
 });
 
-describe('preload — app namespace', () => {
+describe('preload - app namespace', () => {
   beforeEach(() => mockIpcRenderer.invoke.mockClear());
 
   it('app.checkUpdate invokes app:check-update', async () => {

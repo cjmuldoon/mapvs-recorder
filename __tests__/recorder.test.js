@@ -1,4 +1,4 @@
-// __tests__/recorder.test.js — mapvs-recorder
+// __tests__/recorder.test.js - mapvs-recorder
 // Tests for src/capture/recorder.js (Recorder class)
 
 jest.mock('electron', () => ({
@@ -25,7 +25,7 @@ const { captureScreen, getActiveWindow } = require('../src/capture/screenshot');
 const { powerMonitor } = require('electron');
 const fs = require('fs');
 
-describe('Recorder — constructor', () => {
+describe('Recorder - constructor', () => {
   it('creates a session with unique ID', () => {
     const r1 = new Recorder({ storagePath: '/tmp', mode: 'manual' });
     const r2 = new Recorder({ storagePath: '/tmp', mode: 'manual' });
@@ -58,7 +58,7 @@ describe('Recorder — constructor', () => {
   });
 });
 
-describe('Recorder — start()', () => {
+describe('Recorder - start()', () => {
   afterEach(() => jest.clearAllMocks());
 
   it('sets status to recording', async () => {
@@ -106,7 +106,7 @@ describe('Recorder — start()', () => {
   });
 });
 
-describe('Recorder — addStep()', () => {
+describe('Recorder - addStep()', () => {
   afterEach(() => jest.clearAllMocks());
 
   it('throws if not recording', async () => {
@@ -165,7 +165,7 @@ describe('Recorder — addStep()', () => {
   });
 });
 
-describe('Recorder — stop()', () => {
+describe('Recorder - stop()', () => {
   afterEach(() => jest.clearAllMocks());
 
   it('sets status to stopped and endTime', async () => {
@@ -245,7 +245,7 @@ describe('Recorder — stop()', () => {
 describe('deriveStageNameFromWindow (via addStep)', () => {
   afterEach(() => jest.clearAllMocks());
 
-  it('derives stage name from window title — strips suffix after hyphen', async () => {
+  it('derives stage name from window title - strips suffix after hyphen', async () => {
     getActiveWindow.mockResolvedValue({ title: 'Dashboard - MyApp', app: 'MyApp', bounds: null });
     const rec = new Recorder({ storagePath: '/tmp', mode: 'manual' });
     await rec.start();

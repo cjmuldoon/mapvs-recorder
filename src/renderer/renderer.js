@@ -1,5 +1,5 @@
 /**
- * ValueStream Recorder — Renderer Process v2
+ * ValueStream Recorder - Renderer Process v2
  * Theme switching, smooth transitions, toast notifications
  */
 
@@ -1019,11 +1019,11 @@ function setupAutoUpdate() {
 
     window.api.app.onUpdateDownloaded((info) => {
       banner.classList.remove('hidden');
-      bannerText.textContent = `Update v${info.version} ready — restart to apply`;
+      bannerText.textContent = `Update v${info.version} ready - restart to apply`;
       progressContainer.classList.add('hidden');
       restartBtn.classList.remove('hidden');
       restartBtn.style.display = '';
-      if (statusText) statusText.textContent = `v${info.version} ready — restart to apply`;
+      if (statusText) statusText.textContent = `v${info.version} ready - restart to apply`;
     });
   }
 }
@@ -1223,7 +1223,7 @@ function stopStepPolling() {
 }
 
 // ============================================================
-// Step Triggers — Key + Region Detection
+// Step Triggers - Key + Region Detection
 // ============================================================
 // State for step triggers
 state.keyTriggers = [];        // [{id, key, display, action}]
@@ -1559,7 +1559,7 @@ function renderRegionTriggerList() {
   });
 }
 
-// Region change detection during recording — compare screenshots at intervals
+// Region change detection during recording - compare screenshots at intervals
 function startRegionChangeDetection() {
   if (!state.regionTriggersEnabled || state.regionTriggers.length === 0) return;
   state.regionBaselines = {};
@@ -1645,7 +1645,7 @@ async function checkRegionChanges() {
         const changePct = computePixelChange(baseline.data, current.data);
 
         if (changePct > 15) {
-          // Significant change detected — mark step boundary
+          // Significant change detected - mark step boundary
           await executeTriggerAction('new-step');
           showToast(`Region "${region.name}" changed (${changePct.toFixed(0)}%)`, 'info', 2000);
           // Update baseline
@@ -1815,7 +1815,7 @@ function renderTimeline() {
     `;
   }).join('');
 
-  // Click handler — scroll to corresponding step card
+  // Click handler - scroll to corresponding step card
   timelineBar.querySelectorAll('.timeline-block').forEach(block => {
     block.addEventListener('click', () => {
       const idx = parseInt(block.dataset.stepIndex);
@@ -2674,7 +2674,7 @@ async function pollLiveRecording() {
       if (!_liveRecBase.visible) {
         banner.innerHTML = `<div class="live-recording-alert ${paused ? 'paused' : ''}">
           <span class="pulse-dot"></span>
-          <span class="live-text"><strong>${paused ? 'Paused' : 'Recording'}</strong> — ${result.map_name || 'Untitled'} on ${device}</span>
+          <span class="live-text"><strong>${paused ? 'Paused' : 'Recording'}</strong> - ${result.map_name || 'Untitled'} on ${device}</span>
           <span class="live-timer" id="liveRecTimer"></span>
           <span class="live-step" id="liveRecStep">Step ${_liveRecBase.step}/${_liveRecBase.total}</span>
         </div>`;
@@ -3132,7 +3132,7 @@ function escapeAttr(str) {
 }
 
 // ============================================================
-// Annotate Tab — Video Annotation for Value Stream Mapping
+// Annotate Tab - Video Annotation for Value Stream Mapping
 // ============================================================
 const annotateState = {
   videoLoaded: false,
@@ -3335,7 +3335,7 @@ async function useLastRecording() {
     if (session.videoPath) {
       loadVideoForAnnotation(session.videoPath);
     } else if (session.steps && session.steps.length > 0) {
-      // Screenshot-based recording — load as frame viewer
+      // Screenshot-based recording - load as frame viewer
       loadScreenshotsForAnnotation(session);
     } else {
       showToast('No data found in last recording session', 'warning');
@@ -3759,7 +3759,7 @@ function formatAnnotateTime(seconds) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// POSE ANALYSIS — skeleton overlay, ergonomic timeline, risk indicators
+// POSE ANALYSIS - skeleton overlay, ergonomic timeline, risk indicators
 // ═══════════════════════════════════════════════════════════════════════════
 
 const POSE_CONNECTIONS = [
@@ -4111,7 +4111,7 @@ function renderPoseTimeline() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAPS TAB — Map detail, analytics, runs, improvements
+// MAPS TAB - Map detail, analytics, runs, improvements
 // ═══════════════════════════════════════════════════════════════════════════
 
 let mapsData = [];
@@ -4148,7 +4148,7 @@ function renderMapList() {
   }
   container.innerHTML = mapsData.map(m => {
     const stages = m.stages_count || m.stage_count || m.stages?.length || 0;
-    const pce = m.pce ? m.pce.toFixed(1) + '%' : '—';
+    const pce = m.pce ? m.pce.toFixed(1) + '%' : '-';
     return `
       <div class="card card-interactive" data-map-id="${m.id}" style="margin-bottom:8px;padding:14px;cursor:pointer;">
         <div style="display:flex;justify-content:space-between;align-items:start;">
@@ -4206,7 +4206,7 @@ async function showMapDetail(mapId) {
 
     // Calculate metrics
     const stages = map.stages || [];
-    let totalCycle = 0, totalWait = 0, vaTime = 0, bottleneck = { name: '—', ct: 0 };
+    let totalCycle = 0, totalWait = 0, vaTime = 0, bottleneck = { name: '-', ct: 0 };
     stages.forEach(s => {
       const ct = parseFloat(s.cycle_time_hrs) || 0;
       const wt = parseFloat(s.wait_time_hrs) || 0;
@@ -4270,7 +4270,7 @@ async function loadMapRuns(mapId) {
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div>
             <span class="font-semibold">Run #${r.run_number}</span>
-            ${r.label ? '<span class="text-muted text-sm"> — ' + escapeHtml(r.label) + '</span>' : ''}
+            ${r.label ? '<span class="text-muted text-sm"> - ' + escapeHtml(r.label) + '</span>' : ''}
           </div>
           <span class="badge badge-${r.status === 'completed' ? 'success' : 'warning'}">${r.status || 'pending'}</span>
         </div>
@@ -4350,7 +4350,7 @@ document.addEventListener('DOMContentLoaded', () => {
 window.showMapDetail = showMapDetail;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DRAWING ANNOTATIONS — Screen recording review tools
+// DRAWING ANNOTATIONS - Screen recording review tools
 // ═══════════════════════════════════════════════════════════════════════════
 
 const drawState = {

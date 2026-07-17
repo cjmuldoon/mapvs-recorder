@@ -1,5 +1,5 @@
 /* ============================================================
-   ValueStream Recorder — Clarity Theme Styles v2
+   ValueStream Recorder - Clarity Theme Styles v2
    Aligned with MapVS Mobile App visual language
    3 theme modes: Light / Soft / Dark
    ============================================================ */
@@ -3075,7 +3075,7 @@ html, body {
   user-select: none;
 }
 
-/* Annotate tab layout fix — fill viewport, override default constraints */
+/* Annotate tab layout fix - fill viewport, override default constraints */
 #tab-annotate {
   display: none;
   flex-direction: column;
@@ -3095,7 +3095,7 @@ html, body {
   flex-direction: column;
 }
 
-/* ── Maps Tab — Metric Cards ── */
+/* ── Maps Tab - Metric Cards ── */
 .metric-card {
   background: var(--vs-bg);
   border: 1px solid var(--vs-border);

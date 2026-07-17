@@ -38,9 +38,9 @@ src/
 
 ## Recording Modes
 
-**Screen Recording** — Automatically captures screenshots at a configurable interval (1s-30s). Detects window changes as potential step boundaries.
+**Screen Recording** - Automatically captures screenshots at a configurable interval (1s-30s). Detects window changes as potential step boundaries.
 
-**Manual Step-through** — Capture each step on demand via button click or keyboard shortcut (Cmd+Shift+N). Add notes per step.
+**Manual Step-through** - Capture each step on demand via button click or keyboard shortcut (Cmd+Shift+N). Add notes per step.
 
 ## Keyboard Shortcuts
 

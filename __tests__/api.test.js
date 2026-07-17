@@ -1,4 +1,4 @@
-// __tests__/api.test.js — mapvs-recorder
+// __tests__/api.test.js - mapvs-recorder
 // Tests for src/sync/api.js
 // Run: npm test
 
