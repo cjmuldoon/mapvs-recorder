@@ -29,7 +29,21 @@ jobs:
 
       - run: npm ci
 
-      - name: Build & publish Windows artifacts
-        run: npx electron-builder --win --publish always
+      - name: Build Windows artifacts
+        run: npx electron-builder --win
+
+      - name: Upload artifacts to release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.ref || github.ref_name }}"
+          # Create the release if it doesn't already exist (tag push case).
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --generate-notes --title "$TAG"
+          # Attach all Windows binaries + updater metadata to the release.
+          gh release upload "$TAG" \
+            dist/*.exe \
+            dist/*.exe.blockmap \
+            dist/latest.yml \
+            --repo "$GITHUB_REPOSITORY" --clobber

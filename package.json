@@ -58,7 +58,8 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": false
+      "allowToChangeInstallationDirectory": false,
+      "artifactName": "ValueStream-by-MapVS-Setup-${version}.${ext}"
     },
     "portable": {
       "artifactName": "ValueStream-by-MapVS-${version}-portable.exe"
